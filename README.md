@@ -1,4 +1,25 @@
-## Deprecation Notice
+# gorfc community revival
+
+This fork revives the original SAP NW RFC Connector for Go as a community
+project. The first goal is assessment: preserve the upstream history, document
+what already works, compare it with `node-rfc` and current SAP NWRFC SDK
+expectations, then modernize the binding without losing the feedback already
+captured in this repository.
+
+The project is a CGO binding over SAP NetWeaver RFC SDK. It is not a pure-Go RFC
+implementation and it does not distribute SAP's SDK, headers, shared libraries,
+or runtime DLLs. Users must install the SAP NWRFC SDK through their own SAP
+customer or partner entitlement.
+
+Current revival documents:
+
+- [Project objective](docs/PROJECT_OBJECTIVE.md)
+- [Revival assessment](docs/GORFC_REVIVAL_ASSESSMENT.md)
+- [Porting strategy](docs/PORTING_STRATEGY.md)
+- [Contribution guide](CONTRIBUTING.md)
+- [Agent instructions](AGENTS.md)
+
+## Upstream Deprecation Notice
 
 This public repository is no longer maintained. Please see [this issue](https://github.com/SAP/gorfc/issues/42) for details.
 
