@@ -148,3 +148,18 @@ var ErrUnavailable = errors.New("nwrfc: SAP NetWeaver RFC SDK is not available i
 // ErrUnsupported indicates the active SDK lacks the capability
 // the caller asked for (e.g. WebSocket RFC on PL < 7.50 PL10).
 var ErrUnsupported = errors.New("nwrfc: feature not supported by this SDK version")
+
+// ErrUnknownType is wrapped by marshal failures when a future
+// SDK release reports an RFCTYPE this library does not handle.
+// The public nwrfc package re-exports the same sentinel value.
+var ErrUnknownType = errors.New("nwrfc: unknown ABAP RFC type")
+
+// ErrTimeout is set as Op on backend.SDKError when ctx hit its
+// deadline mid-call. The public nwrfc.mapBackendError detects
+// it and returns *nwrfc.TimeoutError.
+var ErrTimeout = errors.New("nwrfc: ctx deadline exceeded mid-call")
+
+// ErrCancelled is set as Op on backend.SDKError when ctx was
+// cancelled mid-call. Public nwrfc.mapBackendError translates
+// to *nwrfc.CancelledError.
+var ErrCancelled = errors.New("nwrfc: ctx cancelled mid-call")

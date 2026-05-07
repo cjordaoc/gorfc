@@ -98,7 +98,10 @@ var (
 	// reports an RFCTYPE the marshaling layer does not handle.
 	// Covers types added in future SDK releases that this
 	// version of the library has not been updated for.
-	ErrUnknownType = errors.New("nwrfc: unknown ABAP RFC type")
+	// Aliases backend.ErrUnknownType so cgo bindings (which
+	// must avoid an import cycle with this package) can wrap
+	// the same identity.
+	ErrUnknownType = backend.ErrUnknownType
 
 	// ErrConnClosed is wrapped by *BrokenConnectionError when a
 	// caller uses a Conn after Close. The Conn keeps a state

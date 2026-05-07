@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -236,6 +237,13 @@ func mapBackendError(err error) error {
 	if errors.As(err, &sdkErr) {
 		return sdkErrorToTyped(sdkErr)
 	}
+	// ctx-cancellation sentinels from the cgo invoke watcher.
+	if errors.Is(err, backend.ErrTimeout) {
+		return &TimeoutError{Function: extractFunctionName(err)}
+	}
+	if errors.Is(err, backend.ErrCancelled) {
+		return &CancelledError{Function: extractFunctionName(err), Cause: err}
+	}
 	// no-SDK / sdk-pending: surface as SDKUnavailableError so
 	// callers can branch via errors.Is(err, ErrSDKUnavailable).
 	if errors.Is(err, backend.ErrUnavailable) {
@@ -245,6 +253,20 @@ func mapBackendError(err error) error {
 		return &UnsupportedFeatureError{Feature: "(unspecified)", CurrentVersion: backend.Default().Version()}
 	}
 	return err
+}
+
+// extractFunctionName pulls "RfcInvoke(FOO)" out of the
+// backend's wrapped error. Best-effort; returns "(unknown)"
+// if the format does not match.
+func extractFunctionName(err error) string {
+	msg := err.Error()
+	if i := strings.Index(msg, "RfcInvoke("); i >= 0 {
+		rest := msg[i+len("RfcInvoke("):]
+		if j := strings.Index(rest, ")"); j >= 0 {
+			return rest[:j]
+		}
+	}
+	return "(unknown)"
 }
 
 // sdkErrorToTyped maps *backend.SDKError to the right typed

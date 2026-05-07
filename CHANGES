@@ -1,9 +1,142 @@
-CHANGES
-=======
+CHANGELOG
+=========
 
-0.0.1 (2016-02-01)
+This file follows Keep a Changelog (https://keepachangelog.com/) and
+SemVer with the relaxation declared in docs/PLAN.md §12 decision 12:
+v0.x is unstable; v1.0.0 freezes the public API.
+
+## v0.1.0 — 2026-05-07 (Tier 0 + Tier 1: production-grade synchronous client)
+
+### Added — Tier 0 (security remediation)
+
+- Removed legacy `gorfc/sapnwrfc.ini` containing real-looking SAP
+  credentials and corporate hostnames in `*.wdf.sap.corp`.
+- Replaced hardcoded credentials in `gorfc/gorfc_test.go` and
+  `example/hello_gorfc.go` with `GORFC_TEST_*` env-var lookups; the
+  legacy integration tests are now opt-in.
+- New `.gitignore` patterns: `sapnwrfc.ini`, `**/sapnwrfc.ini`,
+  `*.pse`, `**/sec/`, `nwrfcsdk/`, `sapcrypto/`.
+- New `gorfc/sapnwrfc.ini.example` placeholder profile (DIRECT, LB,
+  SNC variants).
+- New `docs/SECURITY.md` v0: never-commit list, runtime credential
+  handling, redaction layers, trace control, license boundary,
+  historical-exposure note.
+- New `.github/workflows/secret-scan.yml` running gitleaks on every
+  push and PR.
+- Tightened `gorfc/gorfc.go:1` build tag from
+  `(linux && cgo) || (amd64 && cgo) || (darwin && cgo)` (matches any
+  amd64 GOOS!) to `(linux || darwin || windows) && cgo`. Added
+  `&& !nwrfc_nosdk` so the legacy package is excluded under that tag.
+- Fixed `defer C.free` capture-before-assignment leak in
+  `gorfc/gorfc.go:fillVariable`. The previous code captured nil
+  pointers at defer-time, leaking every fill_variable allocation per
+  RFC call.
+- New `docs/FEATURE_MATRIX.md`, `docs/SDK_FUNCTIONS_MAP.md`,
+  `docs/ROADMAP.md` indices over PLAN.md.
+
+### Added — Tier 1 (core revival)
+
+- New module path `github.com/cjordaoc/gorfc` (community-owned;
+  upstream `github.com/sap/gorfc` is archived). go.mod bumped to
+  `go 1.23 + toolchain go1.25.0`. testify bumped to v1.10.0.
+- New `internal/backend` package: Backend interface, Params (with
+  `slog.LogValuer` redaction over SensitiveKeys), CallParams,
+  InvokeOptions, Direction bitmask, Version + AtLeast,
+  Capabilities, Attributes, FunctionDescriptor, RFCType enum, Date,
+  Time, 17 Categorys, SDKError + SDKErrorInfo + Group constants.
+- New `internal/sdkbackend` package: cgo bindings over the SAP
+  NetWeaver RFC SDK. Files: backend_sdk.go (registry + dispatch),
+  cgo_directives.go (per-OS CFLAGS/LDFLAGS plus paired
+  goMallocU/goFreeU/goStrlenU/goSetParamActive C helpers),
+  ucs.go (RfcUTF8ToSAPUC/RfcSAPUCToUTF8 with leak-free fillString),
+  conn.go (Open/Close/Ping/Reset/Attributes), describe.go
+  (RfcGetFunctionDesc + recursive type/field walk), invoke.go
+  (RfcCreateFunction + fill + RfcInvoke with ctx-cancel watcher
+  goroutine + wrap + RfcDestroyFunction), fill.go (Go → ABAP),
+  wrap.go (ABAP → Go), errors.go (RFC_ERROR_INFO → backend.SDKError),
+  version.go (RfcGetVersion + Capabilities thresholds).
+- New `internal/nosdkbackend` package: SDK-free stub. Every method
+  returns wrapped backend.ErrUnavailable; nwrfc.mapBackendError
+  translates to *SDKUnavailableError.
+- New `internal/ucs2` package: UCS-2/UTF-16LE ↔ UTF-8 in pure Go
+  (Encode/Decode/EncodeNullTerminated/RStrip/CountCodeUnits).
+  Validates and rejects invalid UTF-8 (ErrInvalidUTF8) and unpaired
+  surrogates (ErrInvalidUTF16). Fuzz tested.
+- New `internal/timeext` package: ABAP DATS/TIMS/UTCLONG parsers
+  and formatters in pure Go. Closes upstream silent-zero-date bug
+  with explicit ErrZeroDate / ErrZeroTime sentinels. Strict and
+  AllowZero options. Fuzz tested.
+- New `internal/bcd` package: BCD/DECF16/DECF34 string normalization,
+  precision/scale enforcement, signed-zero canonicalization, big.Rat
+  formatting helper for codegen.
+- New public `nwrfc` package:
+  - `Conn` lifecycle: Open / OpenDest / Close (idempotent) / Ping /
+    Reset / Attributes / Alive / Backend.
+  - `Params` typed struct with redacting LogValue and pre-flight
+    validate() that produces *ConfigError.
+  - 16-type error hierarchy plus 16 category sentinels and 4 domain
+    sentinels (ErrZeroDate, ErrZeroTime, ErrUnknownType,
+    ErrConnClosed). Each implements slog.LogValuer with redaction.
+  - `Call(ctx, conn, fn, in, out, opts...)` typed marshaling with
+    `rfc:"NAME,omitempty"` struct tags, anonymous-field flattening,
+    map / pointer / nested struct / slice support. `CallMap` is the
+    dynamic-shape sibling.
+  - `Pool` with channel-based waiter handoff, LIFO idle stack,
+    IdleTimeout / MaxLifetime / AcquireTimeout / AfterAcquire hooks,
+    Stats() snapshot, Do() acquire-call-release sandwich with
+    discard-on-panic. 16-goroutine race-detector test.
+  - `Session` with Commit/Rollback over BAPI_TRANSACTION_COMMIT /
+    BAPI_TRANSACTION_ROLLBACK + RfcResetServerContext.
+  - `EnsureSDK()`, `SDKVersion()`, `Capabilities()` for runtime
+    capability checks. Capability-extension wrappers
+    `SetTraceLevel/SetTraceDir/LanguageISOToSAP/LanguageSAPToISO/
+    LoadCryptoLibrary/SetIniPath/ReloadIniFile`.
+  - WebSocket RFC + crypto loader parameters surfaced via Params.
+  - Auto-registration via `nwrfc/register_sdk.go` (cgo) /
+    `nwrfc/register_nosdk.go` (no-SDK) blank imports.
+- New documentation: `docs/INSTALL.md`, `docs/BUILD.md`,
+  `docs/CONFIGURATION.md`, `docs/ERRORS.md`. The existing
+  `docs/SECURITY.md` is referenced by all four.
+
+### Changed — breaking from upstream `github.com/sap/gorfc`
+
+- Module path: `github.com/sap/gorfc` → `github.com/cjordaoc/gorfc`.
+  Importers update the import path; the new public API lives in the
+  `nwrfc/` subpackage. The legacy `gorfc/` package is preserved
+  one-version for migration.
+- Date/time policy: ABAP "00000000"/"000000" no longer silently maps
+  to a zero `time.Time`. Use `nwrfc.CallOptions{AllowZeroDate: true}`
+  to opt back in.
+- Error shape: previously `*RfcError` and `*GoRfcError`. Now 16
+  typed structs in `nwrfc/`. Branch via `errors.Is` sentinels or
+  `errors.As` concrete types.
+
+### Fixed
+
+- Memory leak in legacy `fillVariable` (defer evaluating its
+  argument at defer-time on a then-nil pointer). Both the legacy
+  package and the new internal/sdkbackend get the paired-allocator
+  fix.
+- Build tag falsely allowed compile on any amd64 GOOS, including
+  unsupported BSDs. Now restricted to linux/darwin/windows + cgo.
+- Committed credentials.
+
+### Security
+
+- See docs/SECURITY.md §8 for the historical exposure note (real
+  credentials previously committed in upstream history).
+
+## Pre-revival (upstream history)
+
+0.2.0 (2020-06-09)
 ------------------
-- Initial release
+- ABAP datatypes support completed, added: RFC_DECF16, RFC_DECF34, RFC_UTCLONG
+- Error handling extended with GoRfc error type
+- RFCTYPE_XSTRING wrap fix, fixed cLen replaced by variable strLen
+- ABAP input parameters check extended, covering:
+  - Passing non-array to TABLE parameter
+  - Datatypes unit tests
+- Raise an error if RFM call requested over closed connection
 
 0.1.0 (2020-05-04)
 ------------------
@@ -16,12 +149,6 @@ CHANGES
     - BCD: RFCTYPE_BCD
 - ABAP INT8 type added: RFCTYPE_INT8
 
-0.2.0 (2020-06-09)
+0.0.1 (2016-02-01)
 ------------------
-- ABAP datatypes support completed, added: RFC_DECF16, RFC_DECF34, RFC_UTCLONG
-- Error handling extended with GoRfc error type
-- RFCTYPE_XSTRING wrap fix, fixed cLen replaced by variable strLen
-- ABAP input parameters check extended, covering:
-  - Passing non-array to TABLE parameter
-  - Datatypes unit tests
-- Raise an error if RFM call requested over closed connection
+- Initial release

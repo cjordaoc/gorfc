@@ -19,7 +19,6 @@ import (
 
 	"github.com/cjordaoc/gorfc/internal/backend"
 	"github.com/cjordaoc/gorfc/internal/timeext"
-	"github.com/cjordaoc/gorfc/nwrfc"
 )
 
 // fillFunctionParameters writes every key in the [backend.CallParams]
@@ -149,7 +148,7 @@ func fillVariable(rfcType C.RFCTYPE, container unsafe.Pointer, cName *C.SAP_UC, 
 		return fillTable(typeDesc, tbl, value, fieldName)
 
 	default:
-		return errMarshal(fieldName, fmt.Sprintf("%T", value), backend.RFCType(rfcType).String(), nwrfc.ErrUnknownType)
+		return errMarshal(fieldName, fmt.Sprintf("%T", value), backend.RFCType(rfcType).String(), backend.ErrUnknownType)
 	}
 }
 

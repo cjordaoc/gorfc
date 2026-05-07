@@ -14,9 +14,9 @@ import "C"
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/cjordaoc/gorfc/internal/backend"
-	"github.com/cjordaoc/gorfc/nwrfc"
 )
 
 // invokeFunction implements [backend.Backend.Invoke] over
@@ -89,13 +89,13 @@ func invokeFunction(ctx context.Context, c *connHandle, fn string, in backend.Ca
 	close(cancelDone)
 
 	if rc != C.RFC_OK {
-		// If ctx was cancelled, prefer the typed Cancel/Timeout
-		// error so callers see the right category.
+		// If ctx was cancelled, surface a sentinel that nwrfc
+		// translates to *TimeoutError / *CancelledError.
 		if cerr := ctx.Err(); cerr != nil {
 			if errors.Is(cerr, context.DeadlineExceeded) {
-				return nil, &nwrfc.TimeoutError{Function: fn}
+				return nil, fmt.Errorf("RfcInvoke(%s): %w", fn, backend.ErrTimeout)
 			}
-			return nil, &nwrfc.CancelledError{Function: fn, Cause: cerr}
+			return nil, fmt.Errorf("RfcInvoke(%s): %w", fn, backend.ErrCancelled)
 		}
 		return nil, errFromInfo(&info, "RfcInvoke("+fn+")")
 	}
