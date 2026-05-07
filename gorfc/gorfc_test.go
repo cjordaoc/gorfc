@@ -1,4 +1,4 @@
-//go:build (linux || darwin || windows) && cgo
+//go:build (linux || darwin || windows) && cgo && !nwrfc_nosdk
 
 package gorfc
 

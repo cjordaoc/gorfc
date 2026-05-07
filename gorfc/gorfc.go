@@ -1,6 +1,7 @@
-//go:build (linux || darwin || windows) && cgo
+//go:build (linux || darwin || windows) && cgo && !nwrfc_nosdk
 // +build linux darwin windows
 // +build cgo
+// +build !nwrfc_nosdk
 
 // Package gorfc provides SAP NetWeaver RFC SDK client bindings for Go.
 //
