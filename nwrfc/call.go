@@ -95,8 +95,10 @@ func Call(ctx context.Context, c *Conn, fn string, in any, out any, optsOpt ...C
 	defer c.Unlock()
 	resp, err := c.backend.Invoke(ctx, c.handle, fn, inMap, opts.toBackend())
 	if err != nil {
-		// Backend already returns typed RFCError; pass through.
-		return nil, err
+		// Translate backend.SDKError → typed RFCError. The
+		// cycle-break refactor moved typed-construction here
+		// from sdkbackend.
+		return nil, mapBackendError(err)
 	}
 	if out != nil {
 		if err := unmarshalOutput(resp, out); err != nil {

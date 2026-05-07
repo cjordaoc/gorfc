@@ -53,12 +53,12 @@ func (e *SDKError) Error() string {
 // `<sapnwrfc.h>` enum order. node-rfc/PyRFC bindings reproduce
 // the values; we follow them.
 const (
-	GroupOK                          uint32 = 0
-	GroupAbapApplicationFailure      uint32 = 1
-	GroupAbapRuntimeFailure          uint32 = 2
-	GroupLogonFailure                uint32 = 3
-	GroupCommunicationFailure        uint32 = 4
-	GroupExternalRuntimeFailure      uint32 = 5
-	GroupExternalApplicationFailure  uint32 = 6
+	GroupOK                           uint32 = 0
+	GroupAbapApplicationFailure       uint32 = 1
+	GroupAbapRuntimeFailure           uint32 = 2
+	GroupLogonFailure                 uint32 = 3
+	GroupCommunicationFailure         uint32 = 4
+	GroupExternalRuntimeFailure       uint32 = 5
+	GroupExternalApplicationFailure   uint32 = 6
 	GroupExternalAuthorizationFailure uint32 = 7
 )

@@ -18,18 +18,18 @@ import (
 )
 
 type ImportStruct struct {
-	RFCFLOAT float64       `rfc:"RFCFLOAT"`
-	RFCCHAR1 string        `rfc:"RFCCHAR1"`
-	RFCCHAR2 string        `rfc:"RFCCHAR2"`
-	RFCCHAR4 string        `rfc:"RFCCHAR4"`
-	RFCINT1  int           `rfc:"RFCINT1"`
-	RFCINT2  int           `rfc:"RFCINT2"`
-	RFCINT4  int           `rfc:"RFCINT4"`
-	RFCHEX3  []byte        `rfc:"RFCHEX3"`
-	RFCTIME  backend.Time  `rfc:"RFCTIME"`
-	RFCDATE  backend.Date  `rfc:"RFCDATE"`
-	RFCDATA1 string        `rfc:"RFCDATA1"`
-	RFCDATA2 string        `rfc:"RFCDATA2"`
+	RFCFLOAT float64      `rfc:"RFCFLOAT"`
+	RFCCHAR1 string       `rfc:"RFCCHAR1"`
+	RFCCHAR2 string       `rfc:"RFCCHAR2"`
+	RFCCHAR4 string       `rfc:"RFCCHAR4"`
+	RFCINT1  int          `rfc:"RFCINT1"`
+	RFCINT2  int          `rfc:"RFCINT2"`
+	RFCINT4  int          `rfc:"RFCINT4"`
+	RFCHEX3  []byte       `rfc:"RFCHEX3"`
+	RFCTIME  backend.Time `rfc:"RFCTIME"`
+	RFCDATE  backend.Date `rfc:"RFCDATE"`
+	RFCDATA1 string       `rfc:"RFCDATA1"`
+	RFCDATA2 string       `rfc:"RFCDATA2"`
 }
 
 type In struct {

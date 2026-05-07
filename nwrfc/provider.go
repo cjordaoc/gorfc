@@ -39,19 +39,19 @@ type ServerProvider interface {
 // Mirrors the SDK's `RFC_CONNECTION_PARAMETER` set for the
 // server side: PROGRAM_ID, GWHOST, GWSERV, ...
 type ServerConfig struct {
-	ProgramID  string
-	GwHost     string
-	GwService  string
-	Repository Params // params used to fetch metadata against an admin SAP system
+	ProgramID                                 string
+	GwHost                                    string
+	GwService                                 string
+	Repository                                Params // params used to fetch metadata against an admin SAP system
 	SncQOP, SncMyName, SncPartnerName, SncLib string
-	Trace      string
-	Extra      map[string]string
+	Trace                                     string
+	Extra                                     map[string]string
 }
 
 var (
-	providerMu      sync.RWMutex
-	destProvider    DestinationProvider
-	serverProvider  ServerProvider
+	providerMu     sync.RWMutex
+	destProvider   DestinationProvider
+	serverProvider ServerProvider
 )
 
 // SetDestinationProvider installs p as the process-wide

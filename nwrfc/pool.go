@@ -62,8 +62,8 @@ type Pool struct {
 	cfg PoolConfig
 
 	mu        sync.Mutex
-	idle      []*poolEntry      // LIFO stack of idle entries
-	openCount int               // total currently-open (idle + checked-out)
+	idle      []*poolEntry // LIFO stack of idle entries
+	openCount int          // total currently-open (idle + checked-out)
 	closed    atomic.Bool
 
 	// waiters is the channel-based handoff for waiting
