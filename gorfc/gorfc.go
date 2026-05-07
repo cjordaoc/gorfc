@@ -200,8 +200,45 @@ func fillVariable(cType C.RFCTYPE, container C.RFC_FUNCTION_HANDLE, cName *C.SAP
 	var cValue *C.SAP_UC
 	var bValue *C.SAP_RAW
 
-	defer C.free(unsafe.Pointer(cValue))
-	defer C.free(unsafe.Pointer(bValue))
+	// Memory ownership note (T0.3 fix):
+	//
+	// The previous code was
+	//
+	//     defer C.free(unsafe.Pointer(cValue))
+	//     defer C.free(unsafe.Pointer(bValue))
+	//
+	// which leaks. `defer` evaluates its arguments at defer-time, not
+	// at call-time. At the moment the two defers are registered both
+	// pointers are nil; the deferred `C.free(nil)` therefore runs on
+	// nil (a POSIX no-op) regardless of what the switch below later
+	// assigns to `cValue` (via `fillString` → `mallocU`) or to
+	// `bValue` (via `C.CBytes` → `malloc`). The actual allocations
+	// are never released, leaking once per filled scalar/string
+	// parameter on every RFC call.
+	//
+	// The closures below read the variable at defer-execution time,
+	// so the actual post-switch pointer is freed.
+	//
+	// NOTE on allocator pairing: the SAP NetWeaver RFC SDK defines
+	// `mallocU` and `freeU` in <sapuc.h>. On Linux and Windows these
+	// expand to the system `malloc`/`free`, so calling `C.free` on a
+	// `mallocU`-allocated pointer is correct in practice on those
+	// platforms. The strictly portable fix (paired `freeU` via a
+	// helper static C function) is part of the new internal binding
+	// being introduced in Tier 1 (see docs/PLAN.md §11 row T1.6,
+	// "ports gorfc fill, corrige leaks"). Tier 0 keeps the legacy
+	// allocator on purpose to minimize behavioral diff during the
+	// remediation phase.
+	defer func() {
+		if cValue != nil {
+			C.free(unsafe.Pointer(cValue))
+		}
+	}()
+	defer func() {
+		if bValue != nil {
+			C.free(unsafe.Pointer(bValue))
+		}
+	}()
 
 	switch cType {
 	case C.RFCTYPE_STRUCTURE:
