@@ -9,15 +9,15 @@
 //
 // Two layers:
 //
-//   1. RedactHandler — a `slog.Handler` wrapper that strips
-//      sensitive attributes (password, ticket, SNC partner
-//      name, X.509 cert) at handler time, even when callers
-//      forget to use the typed shapes that auto-redact.
+//  1. RedactHandler — a `slog.Handler` wrapper that strips
+//     sensitive attributes (password, ticket, SNC partner
+//     name, X.509 cert) at handler time, even when callers
+//     forget to use the typed shapes that auto-redact.
 //
-//   2. ConnListener — a [nwrfc.Listener] that emits OTel
-//      spans for Open/Close/Broken events. Spans carry the
-//      destination name, SAP system ID (when known), and
-//      the error category (no payload, no credentials).
+//  2. ConnListener — a [nwrfc.Listener] that emits OTel
+//     spans for Open/Close/Broken events. Spans carry the
+//     destination name, SAP system ID (when known), and
+//     the error category (no payload, no credentials).
 //
 // Tier 2 deliverable per docs/PLAN.md §10. Designed so the
 // core library has zero dependency on OpenTelemetry —

@@ -22,20 +22,20 @@ import (
 // names match ABAP DDIC (BAPIRET2 structure) verbatim except
 // for casing.
 type BAPIReturn struct {
-	Type       string `rfc:"TYPE"`        // "S","I","W","E","A","X" (success / info / warning / error / abort / dump)
-	ID         string `rfc:"ID"`          // Message class
-	Number     string `rfc:"NUMBER"`      // Message number
-	Message    string `rfc:"MESSAGE"`     // Human-readable text
-	LogNo      string `rfc:"LOG_NO"`
-	LogMsgNo   string `rfc:"LOG_MSG_NO"`
-	MessageV1  string `rfc:"MESSAGE_V1"`
-	MessageV2  string `rfc:"MESSAGE_V2"`
-	MessageV3  string `rfc:"MESSAGE_V3"`
-	MessageV4  string `rfc:"MESSAGE_V4"`
-	Parameter  string `rfc:"PARAMETER"`
-	Row        int    `rfc:"ROW"`
-	Field      string `rfc:"FIELD"`
-	System     string `rfc:"SYSTEM"`
+	Type      string `rfc:"TYPE"`    // "S","I","W","E","A","X" (success / info / warning / error / abort / dump)
+	ID        string `rfc:"ID"`      // Message class
+	Number    string `rfc:"NUMBER"`  // Message number
+	Message   string `rfc:"MESSAGE"` // Human-readable text
+	LogNo     string `rfc:"LOG_NO"`
+	LogMsgNo  string `rfc:"LOG_MSG_NO"`
+	MessageV1 string `rfc:"MESSAGE_V1"`
+	MessageV2 string `rfc:"MESSAGE_V2"`
+	MessageV3 string `rfc:"MESSAGE_V3"`
+	MessageV4 string `rfc:"MESSAGE_V4"`
+	Parameter string `rfc:"PARAMETER"`
+	Row       int    `rfc:"ROW"`
+	Field     string `rfc:"FIELD"`
+	System    string `rfc:"SYSTEM"`
 }
 
 // IsError reports whether r is an Error / Abort / Dump-typed

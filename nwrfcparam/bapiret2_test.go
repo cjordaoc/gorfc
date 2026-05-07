@@ -16,9 +16,9 @@ import (
 
 func TestBAPIReturn_TypeClassification(t *testing.T) {
 	cases := []struct {
-		t       string
-		isErr   bool
-		isWarn  bool
+		t      string
+		isErr  bool
+		isWarn bool
 	}{
 		{"S", false, false}, {"I", false, false}, {"W", false, true},
 		{"E", true, false}, {"A", true, false}, {"X", true, false},
