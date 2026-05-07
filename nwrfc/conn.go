@@ -214,9 +214,13 @@ func (c *Conn) checkOpen() error {
 }
 
 // mapBackendError converts a backend-level error into the
-// public typed error hierarchy. The cgo backend (T1.5) populates
-// fully-typed errors; until then, the no-SDK and sdk-pending
-// backends return wrapped backend.ErrUnavailable, which we
+// public typed error hierarchy.
+//
+// The cgo backend emits *backend.SDKError carrying the decoded
+// RFC_ERROR_INFO; we dispatch on Group to construct the right
+// typed struct (LogonError, ABAPApplicationError, ...).
+//
+// The no-SDK backend wraps backend.ErrUnavailable, which we
 // translate into *SDKUnavailableError so callers can match
 // against ErrSDKUnavailable.
 func mapBackendError(err error) error {
@@ -227,6 +231,11 @@ func mapBackendError(err error) error {
 	if _, ok := err.(RFCError); ok {
 		return err
 	}
+	// SDK-side error from the cgo backend.
+	var sdkErr *backend.SDKError
+	if errors.As(err, &sdkErr) {
+		return sdkErrorToTyped(sdkErr)
+	}
 	// no-SDK / sdk-pending: surface as SDKUnavailableError so
 	// callers can branch via errors.Is(err, ErrSDKUnavailable).
 	if errors.Is(err, backend.ErrUnavailable) {
@@ -235,9 +244,44 @@ func mapBackendError(err error) error {
 	if errors.Is(err, backend.ErrUnsupported) {
 		return &UnsupportedFeatureError{Feature: "(unspecified)", CurrentVersion: backend.Default().Version()}
 	}
-	// Unknown — pass through; the call site will see whatever
-	// the backend returned. This is reachable only if a future
-	// backend returns errors that bypass the typed hierarchy;
-	// add a category mapping there rather than here.
 	return err
+}
+
+// sdkErrorToTyped maps *backend.SDKError to the right typed
+// nwrfc error struct based on the SDK error group.
+func sdkErrorToTyped(e *backend.SDKError) error {
+	info := SDKErrorInfo{
+		Code:          e.Info.Code,
+		Group:         e.Info.Group,
+		Key:           e.Info.Key,
+		Message:       e.Info.Message,
+		AbapMsgClass:  e.Info.AbapMsgClass,
+		AbapMsgType:   e.Info.AbapMsgType,
+		AbapMsgNumber: e.Info.AbapMsgNumber,
+		AbapMsgV1:     e.Info.AbapMsgV1,
+		AbapMsgV2:     e.Info.AbapMsgV2,
+		AbapMsgV3:     e.Info.AbapMsgV3,
+		AbapMsgV4:     e.Info.AbapMsgV4,
+	}
+	switch e.Info.Group {
+	case backend.GroupLogonFailure:
+		return &LogonError{SDKErrorInfo: info}
+	case backend.GroupCommunicationFailure:
+		return &CommunicationError{SDKErrorInfo: info}
+	case backend.GroupAbapApplicationFailure:
+		return &ABAPApplicationError{SDKErrorInfo: info, Function: e.Op}
+	case backend.GroupAbapRuntimeFailure:
+		return &ABAPRuntimeError{SDKErrorInfo: info, Function: e.Op}
+	case backend.GroupExternalAuthorizationFailure:
+		return &ExternalAuthorizationError{SDKErrorInfo: info}
+	case backend.GroupExternalApplicationFailure:
+		return &ExternalApplicationError{SDKErrorInfo: info, Function: e.Op}
+	case backend.GroupExternalRuntimeFailure:
+		return &ExternalRuntimeError{SDKErrorInfo: info}
+	default:
+		// Unknown group: surface as ExternalRuntime so the
+		// caller still gets a typed error; the Code/Key are
+		// preserved for diagnosis.
+		return &ExternalRuntimeError{SDKErrorInfo: info}
+	}
 }
