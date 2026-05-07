@@ -141,6 +141,108 @@ type CryptoLoader interface {
 	LoadCryptoLibrary(path string) error
 }
 
+// TxHandle is an opaque identifier for a tRFC/qRFC transaction
+// container created via `RfcCreateTransaction`. It is owned by
+// the backend; callers MUST NOT inspect or compare it.
+type TxHandle uint64
+
+// UnitHandle is the bgRFC counterpart created via
+// `RfcCreateUnit`.
+type UnitHandle uint64
+
+// UnitIdentifier mirrors the SDK's RFC_UNIT_IDENTIFIER. The
+// type byte is 'T' for synchronous units and 'Q' for queued
+// units (set by the SDK at create time, depending on whether
+// queueNames was empty). The caller must round-trip this value
+// back to ConfirmUnit / GetUnitState — losing it makes those
+// calls fail.
+type UnitIdentifier struct {
+	Type byte
+	ID   string
+}
+
+// TransactionalBackend is an optional capability-extension for
+// backends that implement tRFC/qRFC client semantics over
+// `RfcCreateTransaction` / `RfcInvokeInTransaction` /
+// `RfcSubmitTransaction` / `RfcConfirmTransaction` /
+// `RfcDestroyTransaction`. Per sapnwrfc.h §2120: queueName=""
+// means tRFC, queueName!="" means qRFC. There is no separate
+// `RfcSetQueueName` symbol — earlier drafts that documented one
+// were wrong.
+type TransactionalBackend interface {
+	// CreateTransaction allocates a transaction container on
+	// the connection h. queueName="" requests tRFC; non-empty
+	// requests qRFC routed through the named queue.
+	CreateTransaction(h ConnHandle, tid string, queueName string) (TxHandle, error)
+
+	// InvokeInTransaction adds one function call to the
+	// transaction. Multiple invocations on the same TxHandle
+	// become a single LUW on the SAP side.
+	InvokeInTransaction(ctx context.Context, h ConnHandle, tx TxHandle, fn string, in CallParams, opts InvokeOptions) error
+
+	// SubmitTransaction sends the LUW to the backend.
+	SubmitTransaction(tx TxHandle) error
+
+	// ConfirmTransaction acknowledges delivery so the SAP side
+	// can free the unit. MUST be called after Submit.
+	ConfirmTransaction(tx TxHandle) error
+
+	// DestroyTransaction releases the local container. Safe to
+	// call after Confirm; required if Submit fails before
+	// Confirm.
+	DestroyTransaction(tx TxHandle) error
+}
+
+// BgRFCBackend is the bgRFC counterpart over `RfcCreateUnit`
+// and friends. bgRFC supersedes tRFC/qRFC on systems where
+// `SBGRFCCONF` is configured; both APIs are kept because many
+// SAP systems still rely on the legacy path.
+type BgRFCBackend interface {
+	// CreateUnit allocates a bgRFC unit container. Empty
+	// `queues` requests a synchronous (type 'T') unit;
+	// non-empty requests an asynchronous (type 'Q') unit
+	// routed through the listed queues. The returned
+	// UnitIdentifier must be passed to ConfirmUnit /
+	// GetUnitState — losing it makes those calls fail.
+	CreateUnit(h ConnHandle, uid string, queues []string) (UnitHandle, UnitIdentifier, error)
+
+	// InvokeInUnit adds one function call to the unit.
+	InvokeInUnit(ctx context.Context, h ConnHandle, u UnitHandle, fn string, in CallParams, opts InvokeOptions) error
+
+	// SubmitUnit sends the unit to the backend. For type 'T'
+	// (synchronous) units, this blocks until execution
+	// completes; for type 'Q', it returns after the unit is
+	// persisted in the queue.
+	SubmitUnit(u UnitHandle) error
+
+	// ConfirmUnit acknowledges the unit on the SAP side.
+	// AGENTS.md / sapnwrfc.h §2305: in three-tier
+	// architectures, do NOT bundle Submit and Confirm. Confirm
+	// only after Submit succeeds end-to-end.
+	ConfirmUnit(h ConnHandle, id UnitIdentifier) error
+
+	// DestroyUnit releases the local unit container.
+	DestroyUnit(u UnitHandle) error
+
+	// GetUnitState polls the SAP side for the current unit
+	// state (in process, committed, rolled back, etc.).
+	GetUnitState(h ConnHandle, id UnitIdentifier) (UnitState, error)
+}
+
+// UnitState mirrors the SDK's RFC_UNIT_STATE enum.
+type UnitState uint8
+
+const (
+	UnitStateUnknown    UnitState = 0
+	UnitStateNotFound   UnitState = 1
+	UnitStateInProcess  UnitState = 2
+	UnitStateCommitted  UnitState = 3
+	UnitStateRolledBack UnitState = 4
+	UnitStateConfirmed  UnitState = 5
+	UnitStateCreated    UnitState = 6
+	UnitStateExecuted   UnitState = 7
+)
+
 // ErrUnavailable is returned by the no-SDK stub backend on every
 // operation and may be checked with [errors.Is].
 var ErrUnavailable = errors.New("nwrfc: SAP NetWeaver RFC SDK is not available in this build")

@@ -167,11 +167,21 @@ helper to use the paired `freeU`. See [PLAN.md §6.2](PLAN.md#62-conversão-sap_
 
 ## Transactional (T3)
 
-| SDK function | Purpose | Status |
-|---|---|---|
-| `RfcCreateTransaction` / `RfcInvokeInTransaction` / `RfcSubmitTransaction` / `RfcConfirmTransaction` / `RfcDestroyTransaction` / `RfcGetTransactionID` | tRFC | ✅ all six exported by PL18 (verified 2026-05-07) |
-| ~~`RfcSetQueueName`~~ | qRFC queue routing. **2026-05-07 finding:** symbol does NOT exist in PL18 export table or headers. qRFC in NW RFC SDK 7.50 is implemented via `RfcCreateUnit(... queueNames ...)` with the queue list passed as a parameter, not via a separate setter. The `Conn.NewQueuedTransaction(name)` Go API needs to be reimplemented in terms of `RfcCreateUnit`. | 🔴 phantom name (Tier-3 follow-up: rewrite over `RfcCreateUnit`) |
-| `RfcCreateUnit` / `RfcInvokeInUnit` / `RfcSubmitUnit` / `RfcConfirmUnit` / `RfcGetUnitState` / `RfcDestroyUnit` | bgRFC (also covers qRFC via queue list arg) | ✅ all six exported by PL18 (verified 2026-05-07) |
+| SDK function | Purpose | Go binding | Status |
+|---|---|---|---|
+| `RfcCreateTransaction` | tRFC/qRFC container creation. Per sapnwrfc.h §2120 the SDK distinguishes the two: queueName=NULL means tRFC, non-NULL means qRFC. **2026-05-07 correction:** earlier docs in this file claimed qRFC needed a separate `RfcSetQueueName` symbol or `RfcCreateUnit`; both were wrong. qRFC lives entirely inside RfcCreateTransaction's queueName parameter. | `internal/sdkbackend/transaction.go:CreateTransaction` | ✅ (PL18) |
+| `RfcInvokeInTransaction` | Add a function call to a tRFC/qRFC unit. Per sapnwrfc.h §2139 the SDK does NOT propagate EXPORTING/CHANGING/TABLES values back; the binding therefore only fills IMPORT-side parameters and ignores return-direction flags. | same file: InvokeInTransaction | ✅ (PL18) |
+| `RfcSubmitTransaction` | Send the LUW to the backend. | same file: SubmitTransaction | ✅ (PL18) |
+| `RfcConfirmTransaction` | Acknowledge delivery so the SAP side can free the unit. | same file: ConfirmTransaction | ✅ (PL18) |
+| `RfcDestroyTransaction` | Release the local container. | same file: DestroyTransaction | ✅ (PL18) |
+| `RfcGetTransactionID` | Generate a 24-char TID from the SDK (we instead use crypto/rand in `nwrfc.NewTID`). | (not bound; Go-side generator is more flexible) | n/a |
+| ~~`RfcSetQueueName`~~ | Phantom symbol. Does NOT exist in PL18 export table or headers. The earlier doc claim that "qRFC routing is via `RfcCreateUnit`'s queue list" was also wrong: qRFC is `RfcCreateTransaction(handle, tid, queueName, info)` with `queueName != NULL`. `RfcCreateUnit` is a separate (bgRFC) API. | (no binding; nothing references it anymore) | 🔴 phantom |
+| `RfcCreateUnit` | bgRFC unit container. queueNames empty → synchronous unit (type 'T'); non-empty → asynchronous queued unit (type 'Q'). | `internal/sdkbackend/unit.go:CreateUnit` | ✅ (PL18) |
+| `RfcInvokeInUnit` | Add a function call to a bgRFC unit. | same file: InvokeInUnit | ✅ (PL18) |
+| `RfcSubmitUnit` | Send the unit to the backend. Type 'T' blocks until execution completes; type 'Q' returns after persistence in the queue. | same file: SubmitUnit | ✅ (PL18) |
+| `RfcConfirmUnit` | Acknowledge the unit. Per sapnwrfc.h §2305: in three-tier architectures, do NOT bundle Submit and Confirm. | same file: ConfirmUnit | ✅ (PL18) |
+| `RfcDestroyUnit` | Release the local container. | same file: DestroyUnit | ✅ (PL18) |
+| `RfcGetUnitState` | Poll the SAP side for unit state (in process, committed, rolled back, etc.). | same file: GetUnitState | ✅ (PL18) |
 
 ## Error info
 
@@ -221,7 +231,7 @@ exported table on 2026-05-07):
 | Reference | Reality |
 |---|---|
 | `RfcStartOrResumeServer` | The real symbol is `RfcStartServer` (sapnwrfc.h:1441). Server accept loops use `RfcListenAndDispatch`. |
-| `RfcSetQueueName` | qRFC queue routing is done by passing the queue list as a parameter to `RfcCreateUnit`, not via a separate setter. |
+| `RfcSetQueueName` | qRFC routing is done via the `queueName` argument to `RfcCreateTransaction` (sapnwrfc.h §2131): NULL means tRFC, non-NULL means qRFC. The earlier "use RfcCreateUnit's queue list" hint in this file was also wrong — `RfcCreateUnit` is the bgRFC API, a separate path. |
 
 Both names appeared in older PLAN.md drafts and may surface in
 future contributions copied from non-SAP wrappers. They are

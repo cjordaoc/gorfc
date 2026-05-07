@@ -5,6 +5,106 @@ This file follows Keep a Changelog (https://keepachangelog.com/) and
 SemVer with the relaxation declared in docs/PLAN.md §12 decision 12:
 v0.x is unstable; v1.0.0 freezes the public API.
 
+## Unreleased — 2026-05-07 (tRFC/qRFC/bgRFC client wiring + qRFC correction)
+
+Implements the cgo bindings and Go-side dispatch for the
+transactional client APIs that earlier rounds had stubbed out.
+Also corrects a documentation error from the link-validation
+round about how qRFC routing actually works.
+
+### Corrected
+
+The "Phantom symbols" finding in docs/SDK_FUNCTIONS_MAP.md
+about `RfcSetQueueName` was right (the symbol truly does NOT
+exist in PL18) but the proposed fix was wrong. The earlier note
+claimed qRFC routing is done via `RfcCreateUnit`'s queue list.
+Re-reading sapnwrfc.h §2120 with the SDK in hand:
+
+- `RfcCreateTransaction(handle, tid, queueName, info)` is the
+  tRFC AND qRFC creator: queueName=NULL means tRFC, non-NULL
+  means qRFC. There is no separate qRFC creator.
+- `RfcCreateUnit(handle, uid, queueNames[], count, ...)` is the
+  bgRFC creator, a different API entirely.
+
+The Conn.NewQueuedTransaction path is therefore implementable
+over RfcCreateTransaction itself; we did not need to rewrite
+over RfcCreateUnit.
+
+### Added — bindings
+
+- internal/sdkbackend/transaction.go: cgo bindings for
+  `RfcCreateTransaction` (tRFC and qRFC, depending on
+  queueName), `RfcInvokeInTransaction`,
+  `RfcSubmitTransaction`, `RfcConfirmTransaction`,
+  `RfcDestroyTransaction`. Includes a per-package txnRegistry
+  that maps opaque uint64 handles to RFC_TRANSACTION_HANDLE
+  pointers, mirroring the connRegistry pattern so cgo
+  unsafe.Pointer never leaks across the public boundary.
+- internal/sdkbackend/unit.go: cgo bindings for `RfcCreateUnit`
+  (synchronous type 'T' when queues is empty; queued type 'Q'
+  with the listed queues otherwise), `RfcInvokeInUnit`,
+  `RfcSubmitUnit`, `RfcConfirmUnit` (takes RFC_UNIT_IDENTIFIER
+  not the handle, per sapnwrfc.h §2331), `RfcDestroyUnit`,
+  `RfcGetUnitState`. Includes a unitRegistry and a
+  goUnitIdentifierToC helper that copies a 32-char Go UnitID
+  into the embedded SAP_UC[33] array of the C identifier
+  struct.
+- internal/backend/backend.go: new optional capability
+  interfaces `TransactionalBackend` (5 methods) and
+  `BgRFCBackend` (6 methods), plus `TxHandle`, `UnitHandle`,
+  `UnitIdentifier`, and `UnitState` types that cross the
+  boundary without leaking cgo pointers.
+
+### Refactored
+
+- nwrfc/transactional.go: replaced the previous stub
+  `*UnsupportedFeatureError` returns with type-asserted
+  dispatch to the new backend interfaces. The Transaction
+  struct now carries a `backend.TxHandle`; Unit carries a
+  `backend.UnitHandle` plus the SDK-populated
+  `backend.UnitIdentifier` (so callers do not need to track
+  the (type 'T'|'Q') byte separately for Confirm/State).
+- nwrfc.UnitState constants now alias the backend.UnitState
+  values verbatim instead of redefining them, with an
+  enum-equality test (TestUnitState_EnumValuesMatchBackend) to
+  keep them locked.
+- Added Transaction.Destroy and Unit.Destroy as explicit
+  release paths for cases where Submit was never attempted
+  (validation failed Go-side after Create succeeded). Both
+  are idempotent.
+
+### Added — behavior tests
+
+nwrfc/transactional_sdk_test.go (gated by `cgo &&
+!nwrfc_nosdk`):
+
+- TestSDKBackend_SatisfiesTransactionalInterface — compile-time
+  check would catch this; the runtime assertion is a clearer
+  failure mode for future contributors who refactor the
+  backend.
+- TestSDKBackend_SatisfiesBgRFCInterface — same for bgRFC.
+- TestNewTID_ShapeContract / TestNewUnitID_ShapeContract — 24
+  and 32 uppercase hex chars respectively, per ABAP contract.
+- TestNewTID_Uniqueness — 1000 generations, all distinct.
+- TestUnitState_EnumValuesMatchBackend — public-API constants
+  match backend-package values byte-for-byte.
+- TestNewQueuedTransaction_FailsClosed — error path on a
+  closed/nil Conn surfaces a real error rather than panicking.
+
+The full Submit/Confirm round-trip against `SM58` / `SMQ1` /
+`SBGRFCMON` is the live-system gate (Categoria B per the
+earlier "SDK link-validation pass" entry below) and remains
+pending.
+
+### Documentation
+
+- docs/SDK_FUNCTIONS_MAP.md: rewrote the "Transactional (T3)"
+  section with the actual SDK function-by-function bindings
+  and the Go file each lives in. Corrected the
+  "Phantom symbols" entry for RfcSetQueueName to reflect that
+  qRFC routing is via RfcCreateTransaction's queueName, not
+  RfcCreateUnit's queue list.
+
 ## Unreleased — 2026-05-07 (SDK behavior-validation pass)
 
 Builds on the same-day link-validation pass. With the SDK linkable,
