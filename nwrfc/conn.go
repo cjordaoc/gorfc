@@ -73,22 +73,45 @@ func Open(ctx context.Context, p Params) (*Conn, error) {
 	bp := p.toBackendParams()
 	h, err := b.Open(ctx, bp)
 	if err != nil {
-		return nil, mapBackendError(err)
+		mapped := mapBackendError(err)
+		fireEvent(EventBroken, p.Dest, mapped)
+		return nil, mapped
 	}
-	return &Conn{
+	c := &Conn{
 		handle:  h,
 		backend: b,
 		dest:    p.Dest,
-	}, nil
+	}
+	fireEvent(EventOpened, p.Dest, nil)
+	return c, nil
 }
 
-// OpenDest establishes a connection using a destination name
-// resolved through sapnwrfc.ini (or the active IniFS in T2.5).
-// Equivalent to populating Params{Dest: name}.
+// OpenDest establishes a connection using a destination name.
+// Resolution order:
+//
+//  1. The registered DestinationProvider, if any.
+//  2. The registered IniFS, if any.
+//  3. The SDK's built-in sapnwrfc.ini lookup.
+//
+// Equivalent to populating Params{Dest: name} when neither a
+// provider nor an IniFS is registered.
 func OpenDest(ctx context.Context, name string) (*Conn, error) {
 	if name == "" {
 		return nil, &ConfigError{Field: "dest", Hint: "destination name is required"}
 	}
+	// 1. DestinationProvider takes precedence.
+	if got, err := resolveDestination(ctx, name); err != nil {
+		return nil, err
+	} else if got.AsHost != "" || got.MsHost != "" || got.WSHost != "" {
+		return Open(ctx, got)
+	}
+	// 2. IniFS lookup.
+	if got, ok, err := resolveIniDest(ctx, name); err != nil {
+		return nil, err
+	} else if ok {
+		return Open(ctx, got)
+	}
+	// 3. SDK fallback (the SDK reads sapnwrfc.ini from disk).
 	return Open(ctx, Params{Dest: name})
 }
 
@@ -111,8 +134,11 @@ func (c *Conn) Close() error {
 		return nil
 	}
 	if err := c.backend.Close(c.handle); err != nil {
-		return mapBackendError(err)
+		mapped := mapBackendError(err)
+		fireEvent(EventClosed, c.dest, mapped)
+		return mapped
 	}
+	fireEvent(EventClosed, c.dest, nil)
 	return nil
 }
 
