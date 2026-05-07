@@ -103,8 +103,13 @@ func (t *Transaction) Call(ctx context.Context, fn string, in any, opts ...CallO
 // unit and runs it in the background. Use [Transaction.Confirm]
 // after the SAP side has processed it.
 //
-// SDK function: RfcSubmitTransaction (🟡 verify) — for tRFC.
-// qRFC additionally calls RfcSetQueueName before submit.
+// SDK function: RfcSubmitTransaction (✅ exists in PL18; behavior
+// against a SAP sandbox is the next gate). For qRFC, NW RFC SDK
+// 7.50 does NOT expose a `RfcSetQueueName` symbol (verified
+// 2026-05-07); queue routing is supplied to `RfcCreateUnit` via
+// its queueNames argument. The qRFC variant of this method needs
+// to be reimplemented over `RfcCreateUnit` accordingly — see
+// docs/SDK_FUNCTIONS_MAP.md "Phantom symbols".
 func (t *Transaction) Submit(_ context.Context) error {
 	if t.closed {
 		return nil

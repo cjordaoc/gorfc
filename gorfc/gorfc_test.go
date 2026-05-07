@@ -26,6 +26,7 @@ func TestNWRFCLibVersion(t *testing.T) {
 
 // Connection Tests
 func TestConnect(t *testing.T) {
+	gorfcTestEnvOrSkip(t)
 	fmt.Println("Connection test: Open and Close")
 	c, err := ConnectionFromParams(abapSystem())
 	if err != nil {
@@ -39,6 +40,7 @@ func TestConnect(t *testing.T) {
 }
 
 func TestConnectionAttributes(t *testing.T) {
+	gorfcTestEnvOrSkip(t)
 	fmt.Println("Connection test: Attributes")
 	c, err := ConnectionFromParams(abapSystem())
 	assert.Equal(t, err, nil)
@@ -81,6 +83,7 @@ func TestConnectionAttributes(t *testing.T) {
 }
 
 func TestPing(t *testing.T) {
+	gorfcTestEnvOrSkip(t)
 	fmt.Println("Connection test: Ping")
 	c, err := ConnectionFromParams(abapSystem())
 	assert.Nil(t, err)
@@ -90,6 +93,7 @@ func TestPing(t *testing.T) {
 }
 
 func TestReopen(t *testing.T) {
+	gorfcTestEnvOrSkip(t)
 	fmt.Println("Connection test: Reopen")
 	c, err := ConnectionFromParams(abapSystem())
 	assert.Nil(t, err)
@@ -99,6 +103,7 @@ func TestReopen(t *testing.T) {
 }
 
 func TestConnectFromDest(t *testing.T) {
+	gorfcTestEnvOrSkip(t)
 	fmt.Println("Connection test: Destination")
 	assert.Greater(t, len(os.Getenv("RFC_INI")), 0)
 	c, err := ConnectionFromDest("MME")
@@ -108,6 +113,7 @@ func TestConnectFromDest(t *testing.T) {
 }
 
 func TestConnectionEcho(t *testing.T) {
+	gorfcTestEnvOrSkip(t)
 	fmt.Println("connection test: Echo")
 	assert.Greater(t, len(os.Getenv("RFC_INI")), 0)
 	c, err := ConnectionFromDest("MME")
@@ -131,6 +137,7 @@ func TestConnectionEcho(t *testing.T) {
 //
 
 func TestWrongUserConnect(t *testing.T) {
+	gorfcTestEnvOrSkip(t)
 	fmt.Println("Connection Error: Logon")
 	a := abapSystem()
 	a["user"] = "@!n0user"
@@ -144,6 +151,7 @@ func TestWrongUserConnect(t *testing.T) {
 }
 
 func TestMissingAshostConnect(t *testing.T) {
+	gorfcTestEnvOrSkip(t)
 	fmt.Println("Connection Error: Connection parameter missing")
 	a := abapSystem()
 	a["ashost"] = ""
@@ -157,6 +165,7 @@ func TestMissingAshostConnect(t *testing.T) {
 }
 
 func TestWrongParameter(t *testing.T) {
+	gorfcTestEnvOrSkip(t)
 	fmt.Println("Connection Error: Call() with non-existing parameter")
 	type importStruct struct {
 		XXX string
@@ -172,6 +181,7 @@ func TestWrongParameter(t *testing.T) {
 }
 
 func TestCallOverClosedConnection(t *testing.T) {
+	gorfcTestEnvOrSkip(t)
 	fmt.Println("Connection Error: Call() over closed connection")
 	c, err := ConnectionFromDest("MME")
 	assert.Nil(t, err)
@@ -187,6 +197,7 @@ func TestCallOverClosedConnection(t *testing.T) {
 //
 
 func TestFunctionDescription(t *testing.T) {
+	gorfcTestEnvOrSkip(t)
 	fmt.Println("STFC: Get Function Description")
 	c, err := ConnectionFromParams(abapSystem())
 	assert.Nil(t, err)
@@ -199,6 +210,7 @@ func TestFunctionDescription(t *testing.T) {
 }
 
 func TestTableRowAsStructure(t *testing.T) {
+	gorfcTestEnvOrSkip(t)
 	fmt.Println("STFC: Table rows as structure")
 	c, err := ConnectionFromParams(abapSystem())
 	assert.Nil(t, err)
@@ -261,6 +273,7 @@ func TestTableRowAsStructure(t *testing.T) {
 }
 
 func TestTableRowAsMap(t *testing.T) {
+	gorfcTestEnvOrSkip(t)
 	fmt.Println("STFC: Table rows as maps")
 	c, err := ConnectionFromParams(abapSystem())
 	assert.Nil(t, err)
@@ -302,6 +315,7 @@ func TestTableRowAsMap(t *testing.T) {
 }
 
 func TestTableRowAsVariable(t *testing.T) {
+	gorfcTestEnvOrSkip(t)
 	fmt.Println("STFC: Table rows as single variables")
 	c, err := ConnectionFromParams(abapSystem())
 	assert.Nil(t, err)
@@ -342,6 +356,7 @@ func TestTableRowAsVariable(t *testing.T) {
 }
 
 func TestConfigParameter(t *testing.T) {
+	gorfcTestEnvOrSkip(t)
 	fmt.Println("STFC: Connection options: rstrip, returnImportParams")
 	//rstrip = false
 	c, err := ConnectionFromParams(abapSystem())
@@ -360,6 +375,7 @@ func TestConfigParameter(t *testing.T) {
 }
 
 func TestInvalidParameterFunctionCall(t *testing.T) {
+	gorfcTestEnvOrSkip(t)
 	fmt.Println("STFC: Invalid RFM parameter")
 	c, err := ConnectionFromParams(abapSystem())
 	assert.Nil(t, err)
@@ -378,6 +394,7 @@ func TestInvalidParameterFunctionCall(t *testing.T) {
 //
 
 func TestErrorFunctionCall(t *testing.T) {
+	gorfcTestEnvOrSkip(t)
 	fmt.Println("Error: ABAP message")
 	c, err := ConnectionFromParams(abapSystem())
 	assert.Nil(t, err)
@@ -438,6 +455,7 @@ func gorfcTestEnvOrSkip(t *testing.T) {
 //
 
 func TestUtcLong(t *testing.T) {
+	gorfcTestEnvOrSkip(t)
 	fmt.Println("Datatypes: UTCLONG min, max, initial")
 	c, err := ConnectionFromDest("QM7")
 	assert.Nil(t, err)
@@ -461,6 +479,7 @@ func TestUtcLong(t *testing.T) {
 }
 
 func TestIntMaxPositive(t *testing.T) {
+	gorfcTestEnvOrSkip(t)
 	fmt.Println("Datatypes: Integers max positive")
 	c, err := ConnectionFromDest("MME")
 	assert.Nil(t, err)
@@ -503,6 +522,7 @@ func TestIntMaxPositive(t *testing.T) {
 }
 
 func TestIntMaxNegative(t *testing.T) {
+	gorfcTestEnvOrSkip(t)
 	fmt.Println("Datatypes: Integers max negative")
 	c, err := ConnectionFromDest("MME")
 	assert.Nil(t, err)
@@ -545,6 +565,7 @@ func TestIntMaxNegative(t *testing.T) {
 }
 
 func TestFloatMinMaxPositive(t *testing.T) {
+	gorfcTestEnvOrSkip(t)
 	fmt.Println("Datatypes: Positive minimum and maximum: FLOAT, DECF16, DECF34")
 	c, err := ConnectionFromDest("MME")
 	assert.Nil(t, err)
@@ -587,6 +608,7 @@ func TestFloatMinMaxPositive(t *testing.T) {
 }
 
 func TestFloatMinMaxNegative(t *testing.T) {
+	gorfcTestEnvOrSkip(t)
 	fmt.Println("Datatypes: Negative minimum and maximum: FLOAT, DECF16, DECF34")
 	c, err := ConnectionFromDest("MME")
 	assert.Nil(t, err)
@@ -629,6 +651,7 @@ func TestFloatMinMaxNegative(t *testing.T) {
 }
 
 func TestRAW_and_BYTE_acceptBuffer(t *testing.T) {
+	gorfcTestEnvOrSkip(t)
 	fmt.Println("Datatypes: RAW/BYTE/XSTRING accepts Buffer")
 
 	bytesIn1 := testutils.XBytes(17)
@@ -651,6 +674,7 @@ func TestRAW_and_BYTE_acceptBuffer(t *testing.T) {
 }
 
 func TestNonArrayForArrayParam(t *testing.T) {
+	gorfcTestEnvOrSkip(t)
 	fmt.Println("Datatypes: Non-array passed to TABLE parameter")
 	c, err := ConnectionFromDest("MME")
 	assert.Nil(t, err)

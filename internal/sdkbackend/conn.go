@@ -6,8 +6,7 @@
 package sdkbackend
 
 /*
-#include <sapnwrfc.h>
-#include <stdlib.h>
+#include "helpers.h"
 */
 import "C"
 
@@ -177,7 +176,7 @@ func connAttributes(c *connHandle) (backend.Attributes, error) {
 		Codepage:              sapUCSliceToString(attr.codepage[:]),
 		PartnerCodepage:       sapUCSliceToString(attr.partnerCodepage[:]),
 		RfcRole:               sapUCSliceToString(attr.rfcRole[:]),
-		Type:                  sapUCSliceToString(attr.type_[:]),
+		Type:                  sapUCSliceToString(attr._type[:]),
 		PartnerType:           sapUCSliceToString(attr.partnerType[:]),
 		Rel:                   sapUCSliceToString(attr.rel[:]),
 		PartnerRel:            sapUCSliceToString(attr.partnerRel[:]),

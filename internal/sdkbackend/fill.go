@@ -6,8 +6,7 @@
 package sdkbackend
 
 /*
-#include <sapnwrfc.h>
-#include <stdlib.h>
+#include "helpers.h"
 */
 import "C"
 
@@ -50,7 +49,7 @@ func fillFunctionParameter(fh C.RFC_FUNCTION_HANDLE, desc C.RFC_FUNCTION_DESC_HA
 	if rc := C.RfcGetParameterDescByName(desc, nameUC, &pd, &info); rc != C.RFC_OK {
 		return errFromInfo(&info, "RfcGetParameterDescByName("+name+")")
 	}
-	return fillVariable(pd._type, fh, &pd.name[0], value, pd.typeDescHandle, name)
+	return fillVariable(pd._type, unsafe.Pointer(fh), &pd.name[0], value, pd.typeDescHandle, name)
 }
 
 // fillVariable writes a single ABAP scalar / structure / table.

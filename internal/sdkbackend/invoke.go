@@ -6,8 +6,7 @@
 package sdkbackend
 
 /*
-#include <sapnwrfc.h>
-#include <stdlib.h>
+#include "helpers.h"
 */
 import "C"
 

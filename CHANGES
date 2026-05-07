@@ -5,6 +5,107 @@ This file follows Keep a Changelog (https://keepachangelog.com/) and
 SemVer with the relaxation declared in docs/PLAN.md §12 decision 12:
 v0.x is unstable; v1.0.0 freezes the public API.
 
+## Unreleased — 2026-05-07 (SDK link-validation pass)
+
+First end-to-end build of the cgo backend against an installed SAP
+NetWeaver RFC SDK (7.50 PL18, Linux x86_64, build 637). The previous
+v1.0.0 surface was specified and unit-tested without the SDK in
+hand. This pass linked `internal/sdkbackend` against the real
+`libsapnwrfc.so` for the first time.
+
+### Fixed (cgo backend regressions surfaced by the link step)
+
+- internal/sdkbackend: helpers `goMallocU` / `goFreeU` /
+  `goStrlenU` / `goSetParamActive` were defined as `static`
+  functions inside the cgo preamble of `cgo_directives.go`, which
+  made them invisible to the cgo preambles of sibling files (each
+  Go file with `import "C"` carries its own preamble). Extracted
+  to `internal/sdkbackend/helpers.{c,h}` so they have package-wide
+  linkage. Each cgo `.go` file now does `#include "helpers.h"`.
+  AGENTS.md §Engineering Rules: explicit malloc/free pairing kept
+  grep-able in one file.
+- internal/sdkbackend/helpers.c: `goFreeU` now calls the standard
+  `free()`. The SDK's `<sapucrfc.h>` defines `mallocU` as a macro
+  that expands to `mallocU16(len)` → `(SAP_UTF16*) malloc(len *
+  sizeof(SAP_UTF16))`. There is **no** matching `freeU` macro in
+  the public header set; the previous binding referenced one. The
+  legacy `gorfc/gorfc.go` had this right (see its 224-227 comment
+  block). Documented in `docs/SDK_FUNCTIONS_MAP.md`.
+- internal/sdkbackend/conn.go: `attr.type_` → `attr._type`. cgo
+  prefixes (not suffixes) Go-keyword field names with `_`, so the
+  C field `type` becomes `_type` on the Go side. The bug was a
+  typo against cgo's renaming rule; sibling code in
+  `internal/sdkbackend/{fill,wrap}.go` already used `pd._type`
+  correctly.
+- internal/sdkbackend/fill.go: `fillFunctionParameter` was passing
+  a `C.RFC_FUNCTION_HANDLE` directly to `fillVariable`, whose
+  signature expects `unsafe.Pointer`. cgo represents `void*`
+  typedefs as opaque pointer types that don't implicitly convert
+  to `unsafe.Pointer`; added the explicit `unsafe.Pointer(fh)`
+  conversion (matching `wrap.go:46`).
+
+### Test hardening (separate SDK-free from SAP-backed)
+
+- gorfc/gorfc_test.go: every integration test now calls
+  `gorfcTestEnvOrSkip(t)` at entry. The helper existed but was
+  not invoked, so without `GORFC_TEST_USER` set the tests would
+  panic on a nil `*Connection`. Per AGENTS.md §Engineering Rules:
+  "Tests must separate SDK-free unit tests from SAP-backed
+  integration tests."
+- nwrfc/conn_nosdk_test.go (new) + nwrfc/conn_test.go: moved
+  `TestOpen_NoSDK_SurfacesAsSDKUnavailable` behind a
+  `//go:build !cgo || nwrfc_nosdk` tag. The test asserts that
+  the no-SDK stub backend surfaces `*SDKUnavailableError`, which
+  is the wrong assertion when the cgo+SDK backend is actually
+  wired in.
+
+### Documentation (SDK reality)
+
+- docs/SDK_FUNCTIONS_MAP.md: flipped 🟡 → ✅ for symbols whose
+  existence is now confirmed by `nm -D libsapnwrfc.so` against
+  PL18: `RfcCancel`, `RfcSetParameterActive`, `RfcSetIniPath`,
+  `RfcReloadIniFile`, `RfcLoadCryptoLibrary`,
+  `RfcLanguageIsoToSap` / `RfcLanguageSapToIso`,
+  `RfcIsConnectionHandleValid`, `RfcGetTypeLength`,
+  `RfcAddFunctionDesc` / `RfcRemoveFunctionDesc`, the throughput
+  family (7.53+), the tRFC family, the bgRFC family, the server
+  install handlers (`RfcInstallTransactionHandlers`,
+  `RfcInstallBgRfcHandlers`,
+  `RfcInstall{Generic,}ServerFunction`), and `RfcRegisterServer`
+  / `RfcShutdownServer` / `RfcListenAndDispatch`.
+- docs/SDK_FUNCTIONS_MAP.md "Phantom symbols" section: two
+  symbols previously documented in PLAN.md drafts do **not**
+  exist in PL18 (`nm -D` confirmed):
+  - `RfcStartOrResumeServer` — the real SDK symbol is
+    `RfcStartServer` (sapnwrfc.h:1441). Server accept loops use
+    `RfcListenAndDispatch`.
+  - `RfcSetQueueName` — qRFC routing in NW RFC SDK 7.50 is done
+    by passing the queue list to `RfcCreateUnit`, not via a
+    separate setter.
+  Per AGENTS.md non-negotiables ("Do not introduce silent
+  fallback behavior"), these are now flagged 🔴 in the map.
+- nwrfc/transactional.go: comment in `Transaction.Submit`
+  updated to reflect the qRFC reality (queue routing via
+  `RfcCreateUnit`, not `RfcSetQueueName`).
+
+### Pending — Categoria B (live SAP system)
+
+The following gates remain blocked on a reachable SAP test system
+with classic RFC enabled:
+
+- STFC_CONNECTION + STFC_STRUCTURE round-trip
+- `RfcCancel` actual cancel-mid-call timing
+- tRFC `Submit` / `Confirm` against `SM58`
+- bgRFC `Unit` lifecycle visible in `SBGRFCMON`
+- `RfcInstallTransactionHandlers` / `RfcInstallBgRfcHandlers`
+  trampoline (T3.4 cgo glue)
+- qRFC reimplementation over `RfcCreateUnit`
+
+Browser-only access (Fiori / S/4HANA Cloud Public) is **not**
+sufficient for these — classic RFC needs the dispatcher port
+(`32<sysnr>`) reachable, which Cloud Public Edition does not
+expose. The SDK is in hand; the system is the gate.
+
 ## v1.0.0 — 2026-05-07 (Tier 4: Go-native differentiation, GA)
 
 ### Added — Tier 4

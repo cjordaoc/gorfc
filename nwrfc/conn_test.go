@@ -90,28 +90,6 @@ func TestOpenDest_RequiresName(t *testing.T) {
 	}
 }
 
-// TestOpen_NoSDK_SurfacesAsSDKUnavailable: against the
-// SDK-pending or nosdk backend, Open returns
-// *SDKUnavailableError rather than a generic backend error.
-func TestOpen_NoSDK_SurfacesAsSDKUnavailable(t *testing.T) {
-	_, err := nwrfc.Open(context.Background(), nwrfc.Params{
-		AsHost: "h", SysNr: "00", User: "u", Passwd: "p", Client: "100",
-	})
-	if err == nil {
-		t.Fatal("Open returned nil error")
-	}
-	if !errors.Is(err, nwrfc.ErrSDKUnavailable) {
-		t.Errorf("err=%v want errors.Is ErrSDKUnavailable", err)
-	}
-	var su *nwrfc.SDKUnavailableError
-	if !errors.As(err, &su) {
-		t.Fatalf("errors.As did not extract *SDKUnavailableError")
-	}
-	if su.Reason == "" {
-		t.Error("SDKUnavailableError.Reason is empty")
-	}
-}
-
 // TestParams_LogValueRedacts: passwords and tickets do not
 // reach slog output.
 func TestParams_LogValueRedacts(t *testing.T) {
