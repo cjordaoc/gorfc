@@ -11,7 +11,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/sap/gorfc/gorfc/testutils"
+	"github.com/cjordaoc/gorfc/gorfc/testutils"
 )
 
 // NW RFC Lib Version

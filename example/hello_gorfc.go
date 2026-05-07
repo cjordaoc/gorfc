@@ -22,7 +22,7 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/sap/gorfc/gorfc"
+	"github.com/cjordaoc/gorfc/gorfc"
 )
 
 func abapSystem() gorfc.ConnectionParameters {
