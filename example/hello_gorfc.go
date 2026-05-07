@@ -14,6 +14,8 @@
 // Requires the SAP NetWeaver RFC SDK installed (see README.md and
 // docs/SECURITY.md). No default credentials are baked into source.
 
+//go:build (linux || darwin || windows) && cgo
+
 package main
 
 import (

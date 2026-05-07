@@ -1,3 +1,5 @@
+//go:build (linux || darwin || windows) && cgo
+
 package gorfc
 
 import (
