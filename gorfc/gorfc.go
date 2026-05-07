@@ -1,7 +1,23 @@
-//go:build (linux && cgo) || (amd64 && cgo) || (darwin && cgo)
-// +build linux,cgo amd64,cgo darwin,cgo
+//go:build (linux || darwin || windows) && cgo
+// +build linux darwin windows
+// +build cgo
 
-// Package gorfc provides SAP NetWeawer RFC SDK client bindings for GO
+// Package gorfc provides SAP NetWeaver RFC SDK client bindings for Go.
+//
+// This is the legacy upstream package preserved during the community
+// revival. It builds on Linux, macOS, and Windows when cgo is enabled
+// and the SAP NetWeaver RFC SDK is installed and reachable through
+// CGO_CFLAGS / CGO_LDFLAGS. On any other GOOS, or when cgo is
+// disabled, the build fails explicitly — there is no silent stub
+// behavior in this package (see AGENTS.md "Non-Negotiables").
+//
+// The previous build constraint here was
+// `(linux && cgo) || (amd64 && cgo) || (darwin && cgo)`, which let
+// the package match on any amd64 GOOS (FreeBSD, OpenBSD, ...) where
+// the SDK is not supported. That constraint was wrong; this one
+// lists each supported GOOS explicitly. The `nwrfc_nosdk` stub build
+// for SDK-free CI lands in Tier 1 in a separate package
+// (see docs/PLAN.md §10 Tier 1).
 package gorfc
 
 /*
