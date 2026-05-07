@@ -1,250 +1,201 @@
-# gorfc community revival
+# gorfc — modern Go connector for SAP NetWeaver RFC SDK (community revival)
 
-This fork revives the original SAP NW RFC Connector for Go as a community
-project. The first goal is assessment: preserve the upstream history, document
-what already works, compare it with `node-rfc` and current SAP NWRFC SDK
-expectations, then modernize the binding without losing the feedback already
-captured in this repository.
+> **Status: revival in progress.** The new modern API under `nwrfc/` is being
+> designed; nothing in this repository is production-ready yet. The current
+> code in [`gorfc/`](gorfc/) is the unmodified upstream `SAP-archive/gorfc`
+> baseline (Apache-2.0), preserved for reference and migration.
+>
+> Active redesign: see [docs/PLAN.md](docs/PLAN.md).
 
-The project is a CGO binding over SAP NetWeaver RFC SDK. It is not a pure-Go RFC
-implementation and it does not distribute SAP's SDK, headers, shared libraries,
-or runtime DLLs. Users must install the SAP NWRFC SDK through their own SAP
-customer or partner entitlement.
+## What this project is
 
-Current revival documents:
+A **CGO binding** over the SAP NetWeaver RFC SDK, designed to consolidate the
+best of the mature wrappers in other ecosystems into a single Go-native
+library:
 
-- [Project objective](docs/PROJECT_OBJECTIVE.md)
-- [Revival assessment](docs/GORFC_REVIVAL_ASSESSMENT.md)
-- [Porting strategy](docs/PORTING_STRATEGY.md)
-- [Contribution guide](CONTRIBUTING.md)
-- [Agent instructions](AGENTS.md)
+- **SAP JCo** — protocol coverage breadth (sRFC, tRFC, qRFC, bgRFC, IDoc,
+  inbound server, repository, all serialization modes, both transports).
+- **node-rfc** — modern API ergonomics: cancel, per-call timeout, custom file
+  system, pluggable BCD/date/time, WebSocket RFC.
+- **PyRFC** — error taxonomy: 8 distinct error categories.
+- **YaNco** — runtime/backend abstraction, dependency injection.
+- **SapNwRfc** — POCO/struct mapping, library-presence check.
+- **Ruby nwrfc** — BigDecimal preservation, FFI patterns.
+- **upstream gorfc** — preserved historical baseline and CGO bridge.
 
-## Upstream Deprecation Notice
+…plus differentiation that **none of the existing wrappers offer**:
+codegen of typed BAPI clients, mock backend for SDK-free integration tests,
+OpenTelemetry/`slog` observability with built-in secret redaction, and
+`context.Context` cancellation wired to `RfcCancel`.
 
-This public repository is no longer maintained. Please see [this issue](https://github.com/SAP/gorfc/issues/42) for details.
+The full feature matrix, architecture, and tiered roadmap are in
+[docs/PLAN.md](docs/PLAN.md).
 
-![](https://img.shields.io/badge/STATUS-NOT%20CURRENTLY%20MAINTAINED-red.svg?longCache=true&style=flat)
+## What this project is not
 
----
+- **Not a pure-Go RFC implementation.** Calling SAP RFC requires the
+  proprietary SAP NetWeaver RFC SDK installed by the user. The protocol is
+  closed, partially documented at packet level only, and SAP itself archived
+  PyRFC because no maintainer could keep up with the closed SDK; a
+  community pure-Go reimplementation is not viable.
+- **Not a redistributor of SAP NWRFC SDK, CommonCryptoLib, sapcrypto, or any
+  other proprietary SAP artifact.** Users obtain the SDK from the SAP
+  Support Portal under their own SAP entitlement.
+- **Not a bypass** of SAP authorization, audit, SNC, SAProuter, or network
+  policy.
+- **Not a replacement** for OData, SOAP, WebGUI, or Fiori automation when
+  those are the correct customer-approved integration paths.
+- **Not an ORM, query builder, or `database/sql` driver** for SAP.
 
-# SAP NetWeawer RFC SDK client bindings for GO
+## Tier roadmap
 
-For more details on the SAP NetWeaver Remote Function Call (RFC) Software Development Kit (SDK) please [see its support page](https://support.sap.com/en/product/connectors/nwrfcsdk.html).
+| Tier | Scope | Status |
+|---|---|---|
+| **T0** | Security remediation: remove committed credentials, fix build tag, fix C memory leaks in legacy code | 🟡 in progress |
+| **T1** | Production-grade synchronous client: `Conn`, `Pool`, `Session`, ABAP types, typed errors, ctx cancel via `RfcCancel`, WebSocket RFC capability-detected, SNC, build-without-SDK | ⏳ planned |
+| **T2** | Throughput, OpenTelemetry/`slog` opt-in, custom destination/server providers, custom `IniFS`, synchronous inbound RFC server, full auth set (password, SNC, x509, MYSAPSSO2, SAML/Bearer) | ⏳ planned |
+| **T3** | tRFC, qRFC, bgRFC client + server, repository abstraction, CLI | ⏳ planned |
+| **T4** | Codegen of typed BAPI clients, mock backend, IDoc support (separate package), HTTP/gRPC bridge, migration guide, `v1.0.0` | ⏳ planned |
 
-[![license](https://img.shields.io/badge/license-Apache-blue.svg)](https://github.com/SAP/gorfc/blob/master/LICENSE)
-[![REUSE status](https://api.reuse.software/badge/github.com/SAP/gorfc)](https://api.reuse.software/badge/github.com/SAP/gorfc)
-[![Go Report Card](https://goreportcard.com/badge/github.com/SAP/gorfc)](https://goreportcard.com/report/github.com/SAP/gorfc)
-[![GoDoc](https://img.shields.io/badge/godoc-reference-blue.svg?style=flat)](https://godoc.org/github.com/SAP/gorfc/gorfc)
+See [docs/PLAN.md](docs/PLAN.md) §10 for tier deliverables and §11 for the
+33-PR implementation sequence.
 
-## Features
+## Compatibility (planned)
 
-- Stateless and stateful connections (multiple function calls in the same ABAP session / same context)
-- Automatic conversion between GO and ABAP datatypes
+| Component | Minimum | Recommended |
+|---|---|---|
+| Go | 1.23 (with `toolchain go1.25.0`) | 1.25.x |
+| SAP NWRFC SDK | 7.50 PL12 | 7.50 PL18 (Dec 2025, latest) |
+| Linux | x86_64, arm64 (tier-1) | latest LTS distros |
+| Windows | x86_64 (tier-1) — MinGW-w64 or `zig cc` | Windows Server 2019+ |
+| macOS | best-effort (tier-2) | 13+ |
 
-## Supported Platforms
+The full compatibility matrix (Go × SDK PL × OS × feature) will live in
+`docs/COMPATIBILITY.md` and will be capability-detected at runtime via
+`RfcGetVersion`.
 
-- macOS, Linux
+## Documentation
 
-- Windows is not supported until the [#21](https://github.com/SAP/gorfc/issues/21#issuecomment-716469783) fixed
+| Document | Purpose |
+|---|---|
+| [docs/PLAN.md](docs/PLAN.md) | Authoritative consolidation plan: architecture, feature matrix, modernization, public API, cgo strategy, errors, security, testing, roadmap, PR sequence, decision log |
+| [docs/PROJECT_OBJECTIVE.md](docs/PROJECT_OBJECTIVE.md) | Scope, success criteria, license boundary |
+| [docs/GORFC_REVIVAL_ASSESSMENT.md](docs/GORFC_REVIVAL_ASSESSMENT.md) | Strengths and gaps in upstream code |
+| [docs/PORTING_STRATEGY.md](docs/PORTING_STRATEGY.md) | Tier-based porting strategy |
+| [AGENTS.md](AGENTS.md) | Engineering rules for AI assistants and humans |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Ground rules, security expectations |
+| [doc/README.md](doc/README.md) | Legacy ABAP-to-Go type mapping reference |
 
-## Requirements
+## Reference projects
 
-### All platforms
+The consolidation draws from:
 
-- GOLANG [requirements](https://golang.org/doc/install#requirements)
+- [SAP/node-rfc](https://github.com/SAP/node-rfc) — modern API reference.
+- [SAP-archive/PyRFC](https://github.com/SAP-archive/PyRFC) — error taxonomy.
+- [SAP JCo](https://support.sap.com/en/product/connectors/jco.html) —
+  protocol coverage reference.
+- [dbosoft/YaNco](https://github.com/dbosoft/YaNco) (.NET) — runtime
+  abstraction.
+- [huysentruitw/SapNwRfc](https://github.com/huysentruitw/SapNwRfc) (.NET)
+  — POCO mapping.
+- [mydoghasworms/nwrfc](https://github.com/mydoghasworms/nwrfc) (Ruby) —
+  FFI patterns.
+- [SAP-archive/gorfc](https://github.com/SAP-archive/gorfc) — upstream
+  baseline (this fork).
 
-- SAP NWRFC SDK 7.50 PL3 or later must be [downloaded](https://launchpad.support.sap.com/#/softwarecenter/template/products/_APP=00200682500000001943&_EVENT=DISPHIER&HEADER=Y&FUNCTIONBAR=N&EVENT=TREE&NE=NAVIGATE&ENR=01200314690100002214&V=MAINT) (SAP partner or customer account required) and [locally installed](http://sap.github.io/node-rfc/install.html#sap-nw-rfc-library-installation)
+## Upstream deprecation notice
 
-  - Using the latest version is recommended as SAP NWRFC SDK is fully backwards compatible, supporting all NetWeaver systems, from today S4, down to R/3 release 4.6C.
-  - SAP NWRFC SDK [overview](https://support.sap.com/en/product/connectors/nwrfcsdk.html) and [release notes](https://launchpad.support.sap.com/#/softwarecenter/object/0020000000340702020)
+The original SAP-owned `github.com/sap/gorfc` repository is no longer
+maintained — see [the deprecation issue](https://github.com/SAP/gorfc/issues/42).
+This community revival picks up where it left off without claiming SAP
+affiliation.
 
-- Build from source on macOS and older Linux systems, may require `uchar.h` file, attached to [SAP OSS Note 2573953](https://launchpad.support.sap.com/#/notes/2573953), to be copied to SAP NWRFC SDK include directory: [documentation](http://sap.github.io/PyRFC/install.html#macos)
+![](https://img.shields.io/badge/STATUS-COMMUNITY%20REVIVAL%20%E2%80%94%20WIP-orange.svg?longCache=true&style=flat)
 
-### Windows
+## Build prerequisites (planned, post-T1)
 
-- [Visual C++ Redistributable Package for Visual Studio 2013](https://www.microsoft.com/en-US/download/details.aspx?id=40784) is required for runtime, see [SAP Note 2573790 - Installation, Support and Availability of the SAP NetWeaver RFC Library 7.50](https://launchpad.support.sap.com/#/notes/2573790)
+The library will wrap the SAP NetWeaver RFC SDK via cgo. Users must install:
 
-- Build toolchain requires GCC and [MinGW](http://mingw-w64.org). Using TDM_GCC may lead to issues: https://stackoverflow.com/questions/35004744/golang-oci8-error-adding-symbols-file-in-wrong-format
+1. **SAP NetWeaver RFC SDK 7.50 PL12 or later** (PL18 recommended), obtained
+   from the [SAP Software Center](https://support.sap.com/en/product/connectors/nwrfcsdk.html)
+   under your own SAP entitlement.
+2. **SAP CommonCryptoLib** (or equivalent `sapcrypto`) if SNC or
+   WebSocket RFC TLS is required.
+3. **Go 1.25** or later.
+4. Platform C toolchain — `gcc` on Linux, MinGW-w64 or
+   [`zig cc`](https://ziglang.org/documentation/master/#Zig-cc-and-Zig-c-1)
+   on Windows, Xcode CLI tools on macOS.
 
-- Install the latest MinGW-w64, keeping offered defaults
+The build will be agnostic of the SDK install path through `SAPNWRFC_HOME`
+and a custom `IniFS` interface. Hardcoded SDK paths in cgo directives
+(present in the upstream baseline) will be removed.
 
-### macOS
+A build tag `nwrfc_nosdk` will produce a stub binary that compiles without
+the SDK present and fails explicitly at runtime with `ErrSDKUnavailable` —
+useful for CI environments and frameworks that import the library only for
+its types.
 
-- Build toolchain requires GCC and Xcode Command Line Tools:
+## Quickstart (planned, post-T1)
 
-```shell
-$ xcode-select --install
-```
-
-- The macOS firewall stealth mode must be disabled ([Can't ping a machine - why?](https://discussions.apple.com/thread/2554739)):
-
-```shell
-sudo /usr/libexec/ApplicationFirewall/socketfilterfw --setstealthmode off
-```
-
-- Remote paths must be set in SAP NWRFC SDK for macOS: [documentation](http://sap.github.io/PyRFC/install.html#macos)
-
-- Build from source requires `uchar.h` file, attached to [SAP OSS Note 2573953](https://launchpad.support.sap.com/#/notes/2573953), to be copied to SAP NWRFC SDK include directory: [documentation](http://sap.github.io/PyRFC/install.html#macos)
-
-- Optionally: [valgrind](https://stackoverflow.com/questions/58360093/how-to-install-valgrind-on-macos-catalina-10-15-with-homebrew)
-
-## SPJ articles
-
-Highly recommended reading about RFC communication and SAP NW RFC Library, published in the SAP Professional Journal (SPJ)
-
-- [Part I RFC Client Programming](https://wiki.scn.sap.com/wiki/x/zz27Gg)
-
-- [Part II RFC Server Programming](https://wiki.scn.sap.com/wiki/x/9z27Gg)
-
-- [Part III Advanced Topics](https://wiki.scn.sap.com/wiki/x/FD67Gg)
-
-## Installation
-
-To start using SAP NW RFC Connector for Go, you shall:
-
-1. [Install and Configure Go](#install-and-configure-go)
-2. [Install the SAP NW RFC Library for your platform](#install-sap-nw-rfc-library)
-3. [Install the GORFC package](#install-gorfc)
-
-### Install and Configure Go
-
-If you are new to Go, the Go distribution shall be installed first, following [GO Installation](#ref1) and [GO Configuration](#ref2) instructions. See also [GO Environment Variables](#ref3).
-
-#### Windows Config Example
-
-After running the [MSI installer](https://golang.org/dl/), the default C:\Go folder is created and the _GOROOT_ system variable is set to C:\Go\.
-
-Create the Go work environment directory:
-
-```shell
-cd c:\
-mkdir workspace
-```
-
-Set the environment user varialbes GOPATH and GOBIN, add the bin subdirectories to PATH and restart the Windows shell.
-
-```shell
-GOPATH = C:\workspace
-GOBIN = %GOPATH%\bin
-PATH = %GOROOT%\bin;%GOBIN%:%PATH%
-```
-
-See also [GO on Windows Example](#ref4).
-
-#### Linux
-
-The work environment setup works the same way like on Windows and [these instructions](https://github.com/golang/go/wiki/Ubuntu) describe the installation on Ubuntu Linux for example.
-
-### Install SAP NW RFC Library
-
-To obtain and install _SAP NW RFC Library_ from _SAP Service Marketplace_, you can follow [the same instructions as for Python or nodejs RFC connectors](http://sap.github.io/PyRFC/install.html#install-c-connector).
-
-### Install GORFC
-
-To install _gorfc_ and dependencies, run following commands:
-
-```bash
-export CGO_CFLAGS="-I $SAPNWRFC_HOME/include"
-export CGO_LDFLAGS="-L $SAPNWRFC_HOME/lib"
-export CGO_CFLAGS_ALLOW=.*
-export CGO_LDFLAGS_ALLOW=.*
-go get github.com/stretchr/testify
-go get github.com/sap/gorfc
-cd $GOPATH/src/github.com/sap/gorfc/gorfc
-go build
-go install
-```
-
-To test the installation, run the example provided:
-
-```bash
-cd $GOPATH/src/github.com/sap/gorfc/example
-go run hello_gorfc.go
-```
-
-## Getting Started
-
-See the _hello_gorfc.go_ example and _gorfc_test.go_ unit tests.
-
-The GO RFC Connector follows the same principles and the implementation model of [Python](https://github.com/SAP/PyRFC) and [nodejs](https://github.com/SAP/node-rfc) RFC connectors and you may check examples and documentation there as well.
+The API in [docs/PLAN.md](docs/PLAN.md) §5 will look like:
 
 ```go
-package main
+import "github.com/cjordaoc/gorfc/nwrfc"
 
-import (
-    "fmt"
-    "github.com/sap/gorfc/gorfc"
-    "github.com/stretchr/testify/assert"
-    "reflect"
-    "testing"
-    "time"
-)
+ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+defer cancel()
 
-func abapSystem() gorfc.ConnectionParameter {
-    return gorfc.ConnectionParameter{
-        Dest:      "I64",
-        Client:    "800",
-        User:      "demo",
-        Passwd:    "welcome",
-        Lang:      "EN",
-        Ashost:    "11.111.11.111",
-        Sysnr:     "00",
-        Saprouter: "/H/222.22.222.22/S/2222/W/xxxxx/H/222.22.222.222/H/",
-    }
+conn, err := nwrfc.Open(ctx, nwrfc.Params{
+    AsHost: "sap.example.com",
+    SysNr:  "00",
+    Client: "100",
+    User:   os.Getenv("SAP_USER"),
+    Passwd: os.Getenv("SAP_PASS"),
+    Lang:   "EN",
+})
+if err != nil { return err }
+defer conn.Close()
+
+type In  struct { ReqText string `rfc:"REQUTEXT"` }
+type Out struct {
+    EchoText string `rfc:"ECHOTEXT"`
+    RespText string `rfc:"RESPTEXT"`
 }
 
-func main() {
-    c, _ := gorfc.Connection(abapSystem())
-    var t *testing.T
-
-    params := map[string]interface{}{
-        "IMPORTSTRUCT": map[string]interface{}{
-            "RFCFLOAT": 1.23456789,
-            "RFCCHAR1": "A",
-            "RFCCHAR2": "BC",
-            "RFCCHAR4": "ÄBC",
-            "RFCINT1":  0xfe,
-            "RFCINT2":  0x7ffe,
-            "RFCINT4":  999999999,
-            "RFCHEX3":  []byte{255, 254, 253},
-            "RFCTIME":  time.Now(),
-            "RFCDATE":  time.Now(),
-            "RFCDATA1": "HELLÖ SÄP",
-            "RFCDATA2": "DATA222",
-        },
-    }
-    r, _ := c.Call("STFC_STRUCTURE", params)
-
-    assert.NotNil(t, r["ECHOSTRUCT"])
-    importStruct := params["IMPORTSTRUCT"].(map[string]interface{})
-    echoStruct := r["ECHOSTRUCT"].(map[string]interface{})
-    assert.Equal(t, importStruct["RFCFLOAT"], echoStruct["RFCFLOAT"])
-    assert.Equal(t, importStruct["RFCCHAR1"], echoStruct["RFCCHAR1"])
-    assert.Equal(t, importStruct["RFCCHAR2"], echoStruct["RFCCHAR2"])
-    assert.Equal(t, importStruct["RFCCHAR4"], echoStruct["RFCCHAR4"])
-    assert.Equal(t, importStruct["RFCINT1"], echoStruct["RFCINT1"])
-    assert.Equal(t, importStruct["RFCINT2"], echoStruct["RFCINT2"])
-    assert.Equal(t, importStruct["RFCINT4"], echoStruct["RFCINT4"])
-    // assert.Equal(t, importStruct["RFCHEX3"], echoStruct["RFCHEX3"])
-    assert.Equal(t, importStruct["RFCTIME"].(time.Time).Format("150405"), echoStruct["RFCTIME"].(time.Time).Format("15.
-    assert.Equal(t, importStruct["RFCDATE"].(time.Time).Format("20060102"), e/Users/d037732/Downloads/gorfc/README.mdchoStruct["RFCDATE"].(time.Time).Format(".
-    assert.Equal(t, importStruct["RFCDATA1"], echoStruct["RFCDATA1"])
-    assert.Equal(t, importStruct["RFCDATA2"], echoStruct["RFCDATA2"])
-
-    fmt.Println(reflect.TypeOf(importStruct["RFCDATE"]))
-    fmt.Println(reflect.TypeOf(importStruct["RFCTIME"]))
-
-    c.Close()
+var out Out
+if _, err := nwrfc.Call(ctx, conn, "STFC_CONNECTION", In{ReqText: "ping"}, &out); err != nil {
+    return err
+}
 ```
+
+Until T1 lands, **no API is stable**. The legacy upstream code in `gorfc/`
+still works against the SDK if you set `CGO_CFLAGS`/`CGO_LDFLAGS`, but is
+documented to have memory-leak and silent-fallback bugs (see
+[docs/GORFC_REVIVAL_ASSESSMENT.md](docs/GORFC_REVIVAL_ASSESSMENT.md) and
+[docs/PLAN.md](docs/PLAN.md) §1.3).
 
 ## Licensing
 
-Please see our [LICENSE file](LICENSE) for copyright and license information. Detailed information including third-party components and their licensing/copyright information is available via the [REUSE tool](https://api.reuse.software/info/github.com/SAP/gorfc).
+Apache-2.0, inherited from upstream. See [LICENSE](LICENSE).
 
-## References
+The SAP NetWeaver RFC SDK and SAP CommonCryptoLib have separate SAP
+licenses; users must obtain them through their own SAP entitlement. **Do
+not commit SDK or CommonCryptoLib artifacts to this repository.** This
+restriction is enforced by `.gitignore` patterns and CI secret scanning.
 
-- <a name="ref1"></a>[GO Installation](https://golang.org/doc/install)
-- <a name="ref2"></a>[GO Configuration](https://golang.org/doc/code.html)
-- <a name="ref3"></a>[GO Environment Variables](https://golang.org/cmd/go/#hdr-Environment_variables)
-- <a name="ref4"></a>[GO on Windows Example](http://www.wadewegner.com/2014/12/easy-go-programming-setup-for-windows/)
-- <a name="ref5"></a>[Another GO on Windows Example](https://github.com/abourget/getting-started-with-golang/blob/master/Getting_Started_for_Windows.md)
+Detailed third-party component info via the [REUSE tool](https://api.reuse.software/info/github.com/SAP/gorfc).
+
+## Background reading
+
+For RFC concepts and runtime behavior, the SAP Professional Journal
+articles remain useful:
+
+- [Part I — RFC Client Programming](https://wiki.scn.sap.com/wiki/x/zz27Gg)
+- [Part II — RFC Server Programming](https://wiki.scn.sap.com/wiki/x/9z27Gg)
+- [Part III — Advanced Topics](https://wiki.scn.sap.com/wiki/x/FD67Gg)
+
+For the SDK itself: the
+[SAP NetWeaver RFC SDK Programming Guide](https://support.sap.com/en/product/connectors/nwrfcsdk.html)
+is the source of truth for C API behavior. All assertions in
+[docs/PLAN.md](docs/PLAN.md) marked 🟡 are pending verification against
+this document.
