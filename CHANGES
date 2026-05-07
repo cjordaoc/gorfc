@@ -5,7 +5,113 @@ This file follows Keep a Changelog (https://keepachangelog.com/) and
 SemVer with the relaxation declared in docs/PLAN.md §12 decision 12:
 v0.x is unstable; v1.0.0 freezes the public API.
 
-## Unreleased — 2026-05-07 (SDK link-validation pass)
+## Unreleased — 2026-05-07 (SDK behavior-validation pass)
+
+Builds on the same-day link-validation pass. With the SDK linkable,
+this pass exercises SDK calls that are observable purely from the
+loaded library — no SAP system needed — and surfaces real bugs the
+link-only pass could not see.
+
+### Added — `internal/sdktest/` package
+
+A dedicated test-only package (`internal/sdktest/`) hosts cgo-using
+behavior probes that exercise the SAP NetWeaver RFC SDK directly,
+independent of the production binding. Required because Go's tooling
+refuses to build cgo inside test files of a cgo-using package
+(internal/sdkbackend uses cgo for the production binding, so its
+test files cannot `import "C"`; see golang/go#27091). The package's
+production code (`sdkprobe.go`) calls the SDK; its `*_test.go` files
+are pure Go and consume those probes.
+
+### Added — bindings that were declared but not implemented
+
+- `internal/sdkbackend/trace.go`: SetTraceLevel / SetTraceDir /
+  setTraceEncoding wrap RfcSetTraceLevel / RfcSetTraceDir /
+  RfcSetTraceEncoding (sapnwrfc.h §812-§946). The public `nwrfc`
+  package's SetTrace* helpers existed since T1.13 but type-asserted
+  on a `backend.Trace` interface that no implementation satisfied;
+  every call returned `*UnsupportedFeatureError` even with the SDK
+  linked. The cgo backend now satisfies the interface end-to-end.
+- `internal/sdkbackend/lang.go`: LanguageISOToSAP / LanguageSAPToISO
+  wrap RfcLanguageIsoToSap / RfcLanguageSapToIso. Same gap as
+  trace — the public API existed; the cgo binding did not.
+- `internal/sdkbackend/ini.go`: SetIniPath / ReloadIniFile wrap
+  RfcSetIniPath / RfcReloadIniFile. Same gap.
+
+### Fixed — bugs surfaced by the new behavior tests
+
+- `internal/sdkbackend/version.go`: RfcGetVersion returns its
+  release line packed into the `major` out-param as a 4-digit
+  decimal (PL18 reports `7500/0/18`). The previous code published
+  Major=7500 directly, which made every `Version.AtLeast(7, x, y)`
+  return true regardless of x/y, silently turning every capability
+  check to a yes — including Throughput on PL18 (which actually
+  needs PL53+). The fix decomposes 7500 → Major=7, Minor=50.
+  Capabilities.Throughput on PL18 now correctly reports `false`.
+- `internal/sdkbackend/lang.go`: RfcLanguageIsoToSap writes ONLY
+  the result code unit and does NOT null-terminate. The first
+  draft used mallocU (which does not zero memory), so the result
+  decoded as e.g. `"Eᷬ"` (real "E" + a stale UTF-16 code unit
+  from prior heap content). Fix: memset the entire output buffer
+  to zero before the SDK call. Same for LanguageSAPToISO.
+- Inline constants table in earlier draft of `internal/sdktest/
+  sdkprobe.go` had `RfcTypeInt8 = 25` and `RfcTypeUtcLong = 30`,
+  both wrong. The SDK header (sapnwrfc.h §93-§113) places these
+  at 31 and 32 respectively (continuing the implicit enum from
+  XSTRING=30). The string-table test caught it as a duplicate
+  ("RFCTYPE_NULL").
+
+### Added — behavior tests
+
+Public API (`nwrfc/sdk_behavior_test.go`):
+
+- TestSDKVersion_NotZero — pins Major/Minor on a real SDK; would
+  have caught the version-decomposition bug.
+- TestCapabilities_DerivedFromVersion — sanity: UTCLong always
+  true on 7.50+.
+- TestLanguageISOToSAP_KnownLanguages — round-trip for EN, DE,
+  PT, FR, ES, JA, ZH (note: ZH is the SAP code "1", not "Z").
+- TestLanguageSAPToISO_RoundTrip — symmetric inverse.
+- TestLanguageISOToSAP_RejectsBadInput — Go-side validation.
+- TestSetTraceLevel_RangeCheck — wrapper rejects level<0 or >3
+  before the SDK silently accepts and discards.
+- TestSetTraceDir_RealFile — sets trace dir to a temp dir, raises
+  trace level, observes that `dev_rfc.log` + `rfc*.trc` actually
+  land in our temp dir.
+
+Probe package (`internal/sdktest/sdkprobe_test.go`):
+
+- TestSDKEncoder_RoundTripVsUCS2 — 18 hard strings (Latin
+  diacritics, Cyrillic, Greek, Hebrew RTL, Arabic RTL, Devanagari,
+  Kanji BMP, Kana, Hangul, supplementary-plane emoji, supplementary
+  kanji 𠮷 U+20BB7, mathematical bold digits 𝟘…𝟛, mixed CJK).
+  For each: encode via SDK → assert SAP_UC bytes are byte-identical
+  to the pure-Go ucs2.EncodeNullTerminated reference → decode back
+  via SDK → assert exact UTF-8 round-trip. All pass on PL18.
+- TestSDKEncoder_LongString — 1 MiB of mixed-script repeated
+  text; catches off-by-one in buffer sizing.
+- TestSDKEncoder_NoLeak — 100,000 encode+decode+free cycles;
+  Go-side HeapAlloc grows by ~13.8 KB total, well under the
+  1 MiB slack. Provides behavioral evidence for the
+  helpers.c "mallocU pairs with standard free()" contract.
+- TestRcAsString_KnownCodes — 6 RFC_RC values yield 6 distinct
+  non-empty strings.
+- TestTypeAsString_KnownTypes — 18 RFCTYPE values yield 14
+  distinct strings (some types share a stringification, e.g.
+  RFCTYPE_DECF16/34 may map to similar text — not pinned).
+- TestDirectionAsString_KnownDirections — 4 RFC_DIRECTION
+  values yield 4 distinct strings.
+
+### Documentation
+
+- docs/SDK_FUNCTIONS_MAP.md: rows for the functions exercised by
+  the new tests now carry `✅ behavior verified PL18` (stronger
+  than the link-only `✅ (PL18)` from the previous round).
+- This entry replaces the former "Unreleased — SDK link-validation
+  pass" entry; the link round and the behavior round share the
+  same date and stay separated by paragraph for traceability.
+
+## Original Unreleased entry — 2026-05-07 (SDK link-validation pass)
 
 First end-to-end build of the cgo backend against an installed SAP
 NetWeaver RFC SDK (7.50 PL18, Linux x86_64, build 637). The previous

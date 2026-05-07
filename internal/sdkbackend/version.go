@@ -17,14 +17,30 @@ import (
 // Version returns the SAP NWRFC SDK version reported by
 // `RfcGetVersion`.
 //
-// SDK function: RfcGetVersion (✅ confirmed; 7.50 PL3+).
+// The SDK packs the release line into the `major` out-param as
+// a 4-digit decimal: e.g. 7500 for the 7.50 family, 7530 for
+// 7.53. The `minor` out-param has been observed as 0 on PL12+.
+// We decompose the packed value so that
+// [backend.Version.AtLeast]`(7, 50, 0)` does what callers
+// expect (the previous code passed 7500 straight into Major,
+// which made every `AtLeast(7, x, y)` return true regardless
+// of x/y).
+//
+// SDK function: RfcGetVersion (✅ behavior verified PL18 —
+// raw returns 7500/0/18 on the SDK we link against).
 func (b *sdkBackend) Version() backend.Version {
-	var major, minor, patchlevel C.uint
-	C.RfcGetVersion(&major, &minor, &patchlevel)
+	var rawMajor, rawMinor, rawPatch C.uint
+	_ = rawMinor // SAP-reserved out-param; observed to be 0.
+	C.RfcGetVersion(&rawMajor, &rawMinor, &rawPatch)
+	r := uint(rawMajor)
+	if r == 0 {
+		return backend.Version{}
+	}
+	// Decompose 7500 -> Major=7, Minor=50; 7530 -> 7, 53.
 	return backend.Version{
-		Major:      uint(major),
-		Minor:      uint(minor),
-		PatchLevel: uint(patchlevel),
+		Major:      r / 1000,
+		Minor:      (r / 10) % 100,
+		PatchLevel: uint(rawPatch),
 	}
 }
 

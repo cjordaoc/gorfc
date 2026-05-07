@@ -39,17 +39,27 @@ SDK. The strategic justification (why these and not others) lives in
 > to ✅ when the symbol is exported by `libsapnwrfc.so` AND the
 > Go-side cgo wrapper compiles against `<sapnwrfc.h>`. Behavior
 > verification against a live SAP system is a separate gate.
+>
+> Verification round 2026-05-07 part 2: client-side behavior tests
+> in `internal/sdktest/` (cgo, no SAP system) and
+> `nwrfc/sdk_behavior_test.go` (public API) exercise SDK semantics
+> directly. Markers below tagged `✅ behavior verified PL18`
+> mean the SDK call is invoked end-to-end with assertions on its
+> result, not merely link-checked.
 
 ## Initialization & version
 
 | SDK function | Purpose | Go binding (target) | Tier | Status | Min PL |
 |---|---|---|---|---|---|
-| `RfcGetVersion` | Library version (major, minor, patchlevel) | `internal/sdkbackend/version.go`; legacy `gorfc/gorfc.go:GetNWRFCLibVersion` | T1.5/T1.14 | ✅ | 7.50 PL3 |
+| `RfcGetVersion` | Library version (major, minor, patchlevel) | `internal/sdkbackend/version.go`; legacy `gorfc/gorfc.go:GetNWRFCLibVersion` | T1.5/T1.14 | ✅ behavior verified PL18 (decomposes raw 7500/0/18 → 7.50.18; was reporting 7500 as Major before this round) | 7.50 PL3 |
 | `RfcSetIniPath` | Override ini search path | `internal/sdkbackend/ini.go` | T2.5 | ✅ (PL18) | 7.50 PL3 |
 | `RfcReloadIniFile` | Reload after change | `internal/sdkbackend/ini.go` | T2.5 | ✅ (PL18) | 7.50 PL3 |
 | `RfcLoadCryptoLibrary` | SAP crypto loader for SNC/TLS | `internal/sdkbackend/crypto.go` | T1.12 | ✅ (PL18) | 7.50 PL10+ 🟡 |
-| `RfcSetTraceLevel` / `RfcSetTraceDir` / `RfcSetTraceEncoding` / `RfcSetTraceType` | Trace control | `internal/sdkbackend/trace.go` | T1.13 | ✅ | 7.50 PL3 |
-| `RfcLanguageIsoToSap` / `RfcLanguageSapToIso` | Language code conversion | `internal/sdkbackend/lang.go` | T1.13 | ✅ (PL18) | 7.50 PL3 |
+| `RfcSetTraceLevel` / `RfcSetTraceDir` | Trace control | `internal/sdkbackend/trace.go` | T1.13 | ✅ behavior verified PL18 (writes `dev_rfc.log` + `rfc*.trc` to user-set dir) | 7.50 PL3 |
+| `RfcSetTraceEncoding` / `RfcSetTraceType` | Trace control (extended) | `internal/sdkbackend/trace.go` | T1.13 | ✅ (PL18) | 7.50 PL3 |
+| `RfcLanguageIsoToSap` / `RfcLanguageSapToIso` | Language code conversion | `internal/sdkbackend/lang.go` | T1.13 | ✅ behavior verified PL18 (round-trip across EN/DE/PT/FR/ES/JA; uncovered SDK quirk: result not null-terminated → buffer-zero fix in lang.go) | 7.50 PL3 |
+| `RfcGetRcAsString` / `RfcGetTypeAsString` / `RfcGetDirectionAsString` | Static lookup tables | `internal/sdkbackend/errors.go` (uses) + `internal/sdktest/sdkprobe.go` (tests) | T1.3 | ✅ behavior verified PL18 (6 distinct RC strings, 14 distinct TYPE strings, 4 distinct DIRECTION strings) | 7.50 PL3 |
+| `RfcUTF8ToSAPUC` / `RfcSAPUCToUTF8` | UTF-8 ↔ SAP_UC | `internal/sdkbackend/ucs.go` (uses) + `internal/sdktest/` (tests) | T1.4 | ✅ behavior verified PL18 (18 hard strings: BMP, supplementary, surrogates; SDK SAP_UC bytes byte-equal to pure-Go UTF-16LE; 1 MiB round-trip; 100k-iter mallocU+free no-leak) | 7.50 PL3 |
 
 ## Connection lifecycle
 
