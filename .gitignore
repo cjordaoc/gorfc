@@ -26,8 +26,24 @@
 *.trc
 *.log
 
-# sapnwrfc.ini example
-# gorfc/sapnwrfc.ini
+# SAP RFC connection profiles — never commit; may contain credentials,
+# system numbers, hostnames, SNC partner names. Use sapnwrfc.ini.example
+# (placeholder values only) as the in-tree reference.
+sapnwrfc.ini
+**/sapnwrfc.ini
+
+# SAP cryptographic / SNC artifacts (PSE files, SAP credential cache,
+# secudir contents). Never commit. Operators provide these out-of-band.
+*.pse
+**/*.pse
+**/sec/
+
+# SAP NetWeaver RFC SDK and SAP CommonCryptoLib are proprietary. Users
+# install them under their own SAP entitlement; do not commit binaries.
+nwrfcsdk/
+**/nwrfcsdk/
+sapcrypto/
+**/sapcrypto/
 
 # Packages
 GoRFC/pkg/

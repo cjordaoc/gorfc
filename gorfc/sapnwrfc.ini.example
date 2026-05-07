@@ -1,0 +1,49 @@
+# sapnwrfc.ini — example destination profile.
+#
+# This file is a PLACEHOLDER. Copy it to `sapnwrfc.ini` next to your
+# binary (or place it on a path resolved by the SAP NetWeaver RFC SDK)
+# and fill in real values. The real `sapnwrfc.ini` MUST NEVER be
+# committed to this repository — it is excluded by `.gitignore`.
+#
+# The SAP NetWeaver RFC SDK reads this file via `RfcOpenConnection` /
+# `RfcSetIniPath` to resolve a destination by its `DEST=` key. See the
+# SAP NetWeaver RFC SDK Programming Guide for the full set of supported
+# parameters; only the most common ones are illustrated below.
+#
+# Security:
+# - Never store production credentials in plain text. Prefer SNC,
+#   X.509, MYSAPSSO2, or environment-injected passwords resolved at
+#   runtime via a secrets manager.
+# - Restrict file permissions (chmod 0600 on Linux/macOS; equivalent
+#   ACLs on Windows) so only the running service can read it.
+# - See `docs/SECURITY.md` for the full credential-handling policy.
+
+# ---- Direct application-server destination (sRFC, password auth) ----
+DEST=EXAMPLE_DIRECT
+USER=PLACEHOLDER_USER
+PASSWD=PLACEHOLDER_PASSWORD
+ASHOST=sap.example.invalid
+SYSNR=00
+CLIENT=100
+LANG=EN
+
+# ---- Load-balanced destination via Message Server ----
+DEST=EXAMPLE_LB
+USER=PLACEHOLDER_USER
+PASSWD=PLACEHOLDER_PASSWORD
+MSHOST=sap-ms.example.invalid
+R3NAME=PRD
+GROUP=PUBLIC
+CLIENT=100
+LANG=EN
+
+# ---- SNC-secured destination (recommended for production) ----
+# DEST=EXAMPLE_SNC
+# ASHOST=sap.example.invalid
+# SYSNR=00
+# CLIENT=100
+# LANG=EN
+# SNC_QOP=3
+# SNC_MYNAME=p:CN=client.example.invalid
+# SNC_PARTNERNAME=p:CN=sap.example.invalid
+# SNC_LIB=/opt/sapcrypto/libsapcrypto.so

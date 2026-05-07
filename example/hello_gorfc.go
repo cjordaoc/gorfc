@@ -1,7 +1,24 @@
+// Example: hello_gorfc connects to a SAP system and calls
+// STFC_STRUCTURE to demonstrate ABAP↔Go type conversion.
+//
+// To run:
+//
+//	export GORFC_TEST_USER=...      # SAP user (DIALOG or SYSTEM type)
+//	export GORFC_TEST_PASSWD=...    # SAP password
+//	export GORFC_TEST_ASHOST=...    # application server hostname
+//	export GORFC_TEST_SYSNR=00      # system number
+//	export GORFC_TEST_CLIENT=100    # SAP client / mandant
+//	export GORFC_TEST_LANG=EN       # logon language
+//	go run ./example/hello_gorfc.go
+//
+// Requires the SAP NetWeaver RFC SDK installed (see README.md and
+// docs/SECURITY.md). No default credentials are baked into source.
+
 package main
 
 import (
 	"fmt"
+	"os"
 	"reflect"
 	"time"
 
@@ -10,12 +27,12 @@ import (
 
 func abapSystem() gorfc.ConnectionParameters {
 	return gorfc.ConnectionParameters{
-		"user":   "demo",
-		"passwd": "welcome",
-		"ashost": "10.68.110.51",
-		"sysnr":  "00",
-		"client": "620",
-		"lang":   "EN",
+		"user":   os.Getenv("GORFC_TEST_USER"),
+		"passwd": os.Getenv("GORFC_TEST_PASSWD"),
+		"ashost": os.Getenv("GORFC_TEST_ASHOST"),
+		"sysnr":  os.Getenv("GORFC_TEST_SYSNR"),
+		"client": os.Getenv("GORFC_TEST_CLIENT"),
+		"lang":   os.Getenv("GORFC_TEST_LANG"),
 	}
 }
 

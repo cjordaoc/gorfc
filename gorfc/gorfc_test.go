@@ -14,9 +14,7 @@ import (
 	"github.com/sap/gorfc/gorfc/testutils"
 )
 
-//
 // NW RFC Lib Version
-//
 func TestNWRFCLibVersion(t *testing.T) {
 	major, minor, patchlevel := GetNWRFCLibVersion()
 	assert.Equal(t, uint(7500), major) // adapt to your NW RFC Lib version
@@ -24,9 +22,7 @@ func TestNWRFCLibVersion(t *testing.T) {
 	assert.Greater(t, patchlevel, uint(4))
 }
 
-//
 // Connection Tests
-//
 func TestConnect(t *testing.T) {
 	fmt.Println("Connection test: Open and Close")
 	c, err := ConnectionFromParams(abapSystem())
@@ -398,14 +394,40 @@ func TestErrorFunctionCall(t *testing.T) {
 	c.Close()
 }
 
+// abapSystem returns connection parameters for the integration-test
+// SAP system, sourced from environment variables.
+//
+// These tests require a live SAP system and the SAP NetWeaver RFC SDK.
+// They are opt-in: set GORFC_TEST_USER / GORFC_TEST_PASSWD /
+// GORFC_TEST_ASHOST / GORFC_TEST_SYSNR / GORFC_TEST_CLIENT /
+// GORFC_TEST_LANG before running `go test ./...`. If GORFC_TEST_USER
+// is unset the calling test should `t.Skip` — see
+// gorfcTestEnvOrSkip below.
+//
+// No default credentials are baked into source. The legacy upstream
+// values were removed in Tier 0 (see docs/SECURITY.md §8 and
+// docs/PLAN.md §10).
 func abapSystem() ConnectionParameters {
 	return ConnectionParameters{
-		"user":   "demo",
-		"passwd": "welcome",
-		"ashost": "10.68.110.51",
-		"sysnr":  "00",
-		"client": "620",
-		"lang":   "EN",
+		"user":   os.Getenv("GORFC_TEST_USER"),
+		"passwd": os.Getenv("GORFC_TEST_PASSWD"),
+		"ashost": os.Getenv("GORFC_TEST_ASHOST"),
+		"sysnr":  os.Getenv("GORFC_TEST_SYSNR"),
+		"client": os.Getenv("GORFC_TEST_CLIENT"),
+		"lang":   os.Getenv("GORFC_TEST_LANG"),
+	}
+}
+
+// gorfcTestEnvOrSkip skips the calling test when GORFC_TEST_USER is
+// not set, so the file remains compilable in CI without a SAP system.
+//
+// Tests that use ConnectionFromDest still depend on a sapnwrfc.ini
+// resolvable by the SDK; that path is governed by GORFC_TEST_DEST_INI
+// (see CONFIGURATION docs in Tier 1).
+func gorfcTestEnvOrSkip(t *testing.T) {
+	t.Helper()
+	if os.Getenv("GORFC_TEST_USER") == "" {
+		t.Skip("GORFC_TEST_USER not set; integration tests require a live SAP system. See docs/SECURITY.md and docs/PLAN.md §10 (Tier 0).")
 	}
 }
 
