@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/cjordaoc/gorfc/internal/backend"
@@ -669,19 +668,17 @@ func (e *ConfigError) As(target any) bool {
 	return false
 }
 func (e *ConfigError) LogValue() slog.Value {
-	field := e.Field
-	// If the field name itself is sensitive (e.g. "passwd"),
-	// redact the hint to avoid echoing rejected input.
+	// If the field name itself is sensitive (e.g. "passwd",
+	// "saml2", "snc_lib"), redact the hint to avoid echoing
+	// rejected input. The match table is shared with Params and
+	// the otel redactor — single source of truth.
 	hint := e.Hint
-	for _, sk := range backend.SensitiveKeys {
-		if strings.EqualFold(field, sk) {
-			hint = "«redacted»"
-			break
-		}
+	if backend.IsSensitiveKey(e.Field) {
+		hint = backend.RedactedPlaceholder
 	}
 	return slog.GroupValue(
 		slog.String("category", backend.CategoryConfig.String()),
-		slog.String("field", field),
+		slog.String("field", e.Field),
 		slog.String("hint", hint),
 	)
 }

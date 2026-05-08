@@ -27,7 +27,6 @@ package nwrfcotel
 import (
 	"context"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/cjordaoc/gorfc/internal/backend"
@@ -86,11 +85,15 @@ func (h *RedactHandler) WithGroup(name string) slog.Handler {
 }
 
 // redactAttr replaces the value of a sensitive attribute with
-// "«redacted»". Recursively scans group values so structured
-// payloads are sanitized at every depth.
+// [backend.RedactedPlaceholder]. Recursively scans group values
+// so structured payloads are sanitized at every depth.
+//
+// Sensitivity is decided by [backend.IsSensitiveKey]; this file
+// keeps no separate match table — the project policy is one
+// source of truth.
 func redactAttr(a slog.Attr) slog.Attr {
-	if isSensitiveKey(a.Key) {
-		return slog.String(a.Key, "«redacted»")
+	if backend.IsSensitiveKey(a.Key) {
+		return slog.String(a.Key, backend.RedactedPlaceholder)
 	}
 	if a.Value.Kind() == slog.KindGroup {
 		group := a.Value.Group()
@@ -101,16 +104,6 @@ func redactAttr(a slog.Attr) slog.Attr {
 		return slog.Attr{Key: a.Key, Value: slog.GroupValue(out...)}
 	}
 	return a
-}
-
-func isSensitiveKey(k string) bool {
-	lk := strings.ToLower(k)
-	for _, s := range backend.SensitiveKeys {
-		if s == lk {
-			return true
-		}
-	}
-	return false
 }
 
 // ConnListener is a [nwrfc.Listener] that records every

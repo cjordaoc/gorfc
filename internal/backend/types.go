@@ -6,6 +6,7 @@ package backend
 import (
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 )
 
@@ -36,7 +37,15 @@ type Params map[string]string
 //
 // This list is the authoritative redaction whitelist; both the
 // public `nwrfc/errors.go` (T1.3) and `nwrfcotel/redact.go`
-// (T2.3) consult it.
+// (T2.3) consult it through [IsSensitiveKey] — never inline a
+// case-by-case match.
+//
+// Names are normalized to lowercase to match the SDK parameter
+// naming convention. Matching is case-insensitive and is also
+// performed against [SensitivePrefixes] / [SensitiveSuffixes]
+// to catch SDK additions (`secret_*`, `*_token`, ...) without
+// requiring a library bump for every new SAP-side credential
+// shape.
 var SensitiveKeys = []string{
 	"passwd",
 	"password",
@@ -44,14 +53,84 @@ var SensitiveKeys = []string{
 	"x509cert",
 	"snc_myname",
 	"snc_partnername",
+	"snc_sso",
 	"tls_client_pse",
 	"tls_trust_all",
 	"saml2",
 	"bearer",
 }
 
+// SensitivePrefixes is the second arm of [IsSensitiveKey]. A
+// key counts as sensitive when, after lowercasing, it starts
+// with one of these. The list deliberately lives next to
+// [SensitiveKeys] so reviewers can see the two halves at once.
+//
+// `snc` is in here in addition to the explicit keys above so
+// that future SAP-side parameters (e.g. a hypothetical
+// `snc_qos_token`) are redacted by default rather than after
+// somebody notices.
+var SensitivePrefixes = []string{
+	"passwd",
+	"password",
+	"secret",
+	"bearer",
+	"saml",
+	"x509",
+	"snc",
+	"tls_",
+	"mysapsso",
+}
+
+// SensitiveSuffixes mirrors [SensitivePrefixes] for the trailing
+// shape of a key (`api_token`, `signing_key`, `client_secret`).
+var SensitiveSuffixes = []string{
+	"_token",
+	"_secret",
+	"_key",
+	"_credential",
+	"_credentials",
+	"_password",
+	"_passwd",
+}
+
+// IsSensitiveKey reports whether k must be redacted before being
+// logged. The single source of truth — every call site that
+// touches `Params` (the otel layer, the public Stringer, error
+// hint redaction) goes through here.
+//
+// The check is case-insensitive: callers that put `Passwd` in
+// `Params.Extra` get the same redaction as the canonical
+// lowercase `passwd` SDK parameter name.
+func IsSensitiveKey(k string) bool {
+	lk := strings.ToLower(strings.TrimSpace(k))
+	if lk == "" {
+		return false
+	}
+	for _, s := range SensitiveKeys {
+		if s == lk {
+			return true
+		}
+	}
+	for _, p := range SensitivePrefixes {
+		if strings.HasPrefix(lk, p) {
+			return true
+		}
+	}
+	for _, s := range SensitiveSuffixes {
+		if strings.HasSuffix(lk, s) {
+			return true
+		}
+	}
+	return false
+}
+
+// RedactedPlaceholder is the substitute string emitted in place
+// of any sensitive value across the project. Centralized so the
+// whole tree uses the same string.
+const RedactedPlaceholder = "«redacted»"
+
 // LogValue implements [slog.LogValuer], redacting any
-// [SensitiveKeys] before emitting. Use:
+// [IsSensitiveKey] match before emitting. Use:
 //
 //	slog.Info("connecting", "params", params)
 //
@@ -62,22 +141,13 @@ func (p Params) LogValue() slog.Value {
 	}
 	attrs := make([]slog.Attr, 0, len(p))
 	for k, v := range p {
-		if isSensitiveKey(k) {
-			attrs = append(attrs, slog.String(k, "«redacted»"))
+		if IsSensitiveKey(k) {
+			attrs = append(attrs, slog.String(k, RedactedPlaceholder))
 			continue
 		}
 		attrs = append(attrs, slog.String(k, v))
 	}
 	return slog.GroupValue(attrs...)
-}
-
-func isSensitiveKey(k string) bool {
-	for _, s := range SensitiveKeys {
-		if s == k {
-			return true
-		}
-	}
-	return false
 }
 
 // CallParams is the dynamic shape of an RFC parameter set. Keys
