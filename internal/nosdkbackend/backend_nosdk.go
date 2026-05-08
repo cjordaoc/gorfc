@@ -68,7 +68,17 @@ func (b *noSDK) Ping(_ context.Context, _ backend.ConnHandle) error {
 func (b *noSDK) Attributes(backend.ConnHandle) (backend.Attributes, error) {
 	return backend.Attributes{}, b.errSDKUnavailable("Attributes")
 }
-func (b *noSDK) Reset(backend.ConnHandle) error { return b.errSDKUnavailable("Reset") }
+func (b *noSDK) Reset(_ context.Context, _ backend.ConnHandle) error {
+	return b.errSDKUnavailable("Reset")
+}
+
+// Cancel implements [backend.Cancellable] for the SDK-free
+// stub. There is no real connection to cancel; we surface the
+// SDK-unavailable error so callers cannot silently rely on a
+// no-op cancel that does nothing useful.
+func (b *noSDK) Cancel(_ backend.ConnHandle) error {
+	return b.errSDKUnavailable("Cancel")
+}
 func (b *noSDK) Describe(_ context.Context, _ backend.ConnHandle, fn string) (backend.FunctionDescriptor, error) {
 	_ = fn
 	return backend.FunctionDescriptor{}, b.errSDKUnavailable("Describe")

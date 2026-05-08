@@ -155,9 +155,20 @@ func (m *Mock) Attributes(h backend.ConnHandle) (backend.Attributes, error) {
 	}, nil
 }
 
-func (m *Mock) Reset(h backend.ConnHandle) error {
+func (m *Mock) Reset(_ context.Context, h backend.ConnHandle) error {
 	if _, ok := m.conns.Load(h); !ok {
 		return fmt.Errorf("nwrfcmock: Reset on unknown handle %d", h)
+	}
+	return nil
+}
+
+// Cancel implements [backend.Cancellable]. The mock has no
+// real SDK call to interrupt, so Cancel is a typed no-op for
+// known handles and surfaces an error for unknown handles —
+// matching Reset / Ping shape so tests catch handle-leak bugs.
+func (m *Mock) Cancel(h backend.ConnHandle) error {
+	if _, ok := m.conns.Load(h); !ok {
+		return fmt.Errorf("nwrfcmock: Cancel on unknown handle %d", h)
 	}
 	return nil
 }

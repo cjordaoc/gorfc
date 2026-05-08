@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"testing"
@@ -87,6 +88,74 @@ func TestOpenDest_RequiresName(t *testing.T) {
 	_, err := nwrfc.OpenDest(context.Background(), "")
 	if !errors.Is(err, nwrfc.ErrConfig) {
 		t.Errorf("err=%v want ErrConfig", err)
+	}
+}
+
+// TestParams_StringerRedacts asserts that fmt.Sprintf("%v") /
+// "%s" / "%+v" / "%#v" all go through the redacted Stringer
+// rather than the default reflection-based formatter. Without
+// this, a single accidental fmt.Println(p) leaks the password.
+func TestParams_StringerRedacts(t *testing.T) {
+	p := nwrfc.Params{
+		AsHost:    "sap.example.invalid",
+		SysNr:     "00",
+		User:      "demo",
+		Passwd:    "supersecret",
+		Mysapsso2: "ticket-xyz",
+		Bearer:    "bearer-zzz",
+		Extra: map[string]string{
+			"custom_token":  "tok-AAA",
+			"api_secret":    "sek-BBB",
+			"snc_qos_token": "snc-CCC",
+			"safe_field":    "ok-DDD",
+		},
+	}
+	for _, verb := range []string{"%v", "%s", "%+v", "%#v"} {
+		out := fmt.Sprintf(verb, p)
+		for _, leak := range []string{
+			"supersecret", "ticket-xyz", "bearer-zzz",
+			"tok-AAA", "sek-BBB", "snc-CCC",
+		} {
+			if strings.Contains(out, leak) {
+				t.Errorf("verb=%s leaked %q in: %s", verb, leak, out)
+			}
+		}
+		if !strings.Contains(out, "ok-DDD") {
+			t.Errorf("verb=%s dropped non-sensitive Extra value: %s", verb, out)
+		}
+		// Non-sensitive named field still emitted.
+		if !strings.Contains(out, "sap.example.invalid") {
+			t.Errorf("verb=%s dropped AsHost: %s", verb, out)
+		}
+	}
+}
+
+// TestParams_ExtraRedactedInLogValue: Params.Extra entries
+// whose keys match the sensitive prefix/suffix matcher are
+// redacted by slog output as well as by Stringer. Same single
+// source of truth (backend.IsSensitiveKey).
+func TestParams_ExtraRedactedInLogValue(t *testing.T) {
+	const sec = "must-not-leak-XYZ"
+	p := nwrfc.Params{
+		AsHost: "h", SysNr: "00",
+		Extra: map[string]string{
+			"client_secret": sec,
+			"my_token":      sec + "-2",
+			"snc_audit":     sec + "-3", // snc* prefix
+			"safe":          "okay-keep",
+		},
+	}
+	var buf bytes.Buffer
+	log := slog.New(slog.NewJSONHandler(&buf, nil))
+	log.Info("connect", "params", p)
+	out := buf.String()
+	for _, leak := range []string{sec, sec + "-2", sec + "-3"} {
+		if strings.Contains(out, leak) {
+			t.Errorf("Extra leaked %q in: %s", leak, out)
+		}
+	}
+	if !strings.Contains(out, "okay-keep") {
+		t.Errorf("Extra dropped non-sensitive value: %s", out)
 	}
 }
 
@@ -185,7 +254,7 @@ func (*happyBackend) Ping(_ context.Context, _ backend.ConnHandle) error { retur
 func (*happyBackend) Attributes(backend.ConnHandle) (backend.Attributes, error) {
 	return backend.Attributes{SysID: "TST"}, nil
 }
-func (*happyBackend) Reset(backend.ConnHandle) error { return nil }
+func (*happyBackend) Reset(context.Context, backend.ConnHandle) error { return nil }
 func (*happyBackend) Describe(_ context.Context, _ backend.ConnHandle, _ string) (backend.FunctionDescriptor, error) {
 	return backend.FunctionDescriptor{}, nil
 }

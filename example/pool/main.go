@@ -40,7 +40,7 @@ func main() {
 		IdleTimeout:    5 * time.Minute,
 		AcquireTimeout: 5 * time.Second,
 		AfterAcquire: func(ctx context.Context, c *nwrfc.Conn) error {
-			return c.Reset()
+			return c.Reset(ctx)
 		},
 	})
 	if err != nil {

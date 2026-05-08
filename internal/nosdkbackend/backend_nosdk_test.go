@@ -45,7 +45,8 @@ func TestNoSDK_AllOpsFailExplicitly(t *testing.T) {
 			_, err := b.Attributes(1)
 			return err
 		}},
-		{"Reset", func() error { return b.Reset(1) }},
+		{"Reset", func() error { return b.Reset(ctx, 1) }},
+		{"Cancel", func() error { return b.Cancel(1) }},
 		{"Describe", func() error {
 			_, err := b.Describe(ctx, 1, "RFC_PING")
 			return err

@@ -71,8 +71,10 @@ func (s *Session) Commit(ctx context.Context, withWait bool) error {
 		return err
 	}
 	// Reset SAP-side context so the next call on this Conn
-	// starts clean.
-	if rerr := s.conn.backend.Reset(s.conn.handle); rerr != nil {
+	// starts clean. The Reset shares ctx with the calling
+	// Commit so a cancelled commit also abandons the reset
+	// rather than waiting on its own.
+	if rerr := s.conn.backend.Reset(ctx, s.conn.handle); rerr != nil {
 		err = errors.Join(err, rerr)
 	}
 	s.closed = true
@@ -90,11 +92,11 @@ func (s *Session) Rollback(ctx context.Context) error {
 	}
 	resp, err := s.conn.backend.Invoke(ctx, s.conn.handle, "BAPI_TRANSACTION_ROLLBACK", backend.CallParams{}, backend.InvokeOptions{})
 	if err != nil {
-		_ = s.conn.backend.Reset(s.conn.handle)
+		_ = s.conn.backend.Reset(ctx, s.conn.handle)
 		s.closed = true
 		return err
 	}
-	if rerr := s.conn.backend.Reset(s.conn.handle); rerr != nil {
+	if rerr := s.conn.backend.Reset(ctx, s.conn.handle); rerr != nil {
 		err = errors.Join(err, rerr)
 	}
 	s.closed = true

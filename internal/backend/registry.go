@@ -94,7 +94,7 @@ func (unregisteredBackend) Ping(_ context.Context, _ ConnHandle) error { return 
 func (unregisteredBackend) Attributes(ConnHandle) (Attributes, error) {
 	return Attributes{}, ErrUnavailable
 }
-func (unregisteredBackend) Reset(ConnHandle) error { return ErrUnavailable }
+func (unregisteredBackend) Reset(_ context.Context, _ ConnHandle) error { return ErrUnavailable }
 
 func (unregisteredBackend) Describe(_ context.Context, _ ConnHandle, _ string) (FunctionDescriptor, error) {
 	return FunctionDescriptor{}, ErrUnavailable

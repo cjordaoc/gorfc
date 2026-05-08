@@ -158,12 +158,12 @@ func (b *sdkBackend) Attributes(h backend.ConnHandle) (backend.Attributes, error
 	return connAttributes(c)
 }
 
-func (b *sdkBackend) Reset(h backend.ConnHandle) error {
+func (b *sdkBackend) Reset(ctx context.Context, h backend.ConnHandle) error {
 	c, err := b.conns.get(h)
 	if err != nil {
 		return err
 	}
-	return resetConn(c)
+	return resetConn(ctx, c)
 }
 
 func (b *sdkBackend) Describe(ctx context.Context, h backend.ConnHandle, fn string) (backend.FunctionDescriptor, error) {
@@ -185,3 +185,30 @@ func (b *sdkBackend) Invoke(ctx context.Context, h backend.ConnHandle, fn string
 func (b *sdkBackend) InvalidateMetadata(fn string) error {
 	return invalidateMetadata(fn)
 }
+
+// Cancel implements the optional [backend.Cancellable]
+// capability. The cgo backend supports it via `RfcCancel` —
+// see docs/EVIDENCE/sdk-cancel.md for symbol-presence and
+// thread-safety evidence.
+//
+// Idempotent on already-closed handles: if the handle is not
+// in the registry (already removed by Close), Cancel returns
+// nil rather than surfacing the registry-miss as an error.
+// This is what callers expect: "cancel an op that may have
+// already finished" should not be a failure.
+func (b *sdkBackend) Cancel(h backend.ConnHandle) error {
+	c, err := b.conns.get(h)
+	if err != nil {
+		// Handle was already closed and removed from the
+		// registry. Cancel of a already-finished op is a no-op
+		// by Cancellable contract.
+		return nil
+	}
+	return cancelConn(c)
+}
+
+// Compile-time assertion that the cgo backend satisfies the
+// public Cancellable contract. Caught at build time rather
+// than runtime so a refactor that drops the method surfaces
+// during compilation.
+var _ backend.Cancellable = (*sdkBackend)(nil)

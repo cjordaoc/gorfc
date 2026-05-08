@@ -40,7 +40,6 @@ import "C"
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 	"unsafe"
@@ -252,25 +251,13 @@ func (b *sdkBackend) InvokeInUnit(ctx context.Context, h backend.ConnHandle, uHa
 		}
 	}
 
-	cancelDone := make(chan struct{})
-	go func() {
-		select {
-		case <-ctx.Done():
-			var ci C.RFC_ERROR_INFO
-			C.RfcCancel(sdkConnPtr(c), &ci)
-		case <-cancelDone:
-		}
-	}()
-
+	cleanup := withCancelWatcher(ctx, c)
 	rc := C.RfcInvokeInUnit(sdkUnitPtr(u), fh, &info)
-	close(cancelDone)
+	cleanup()
 
 	if rc != C.RFC_OK {
-		if cerr := ctx.Err(); cerr != nil {
-			if errors.Is(cerr, context.DeadlineExceeded) {
-				return fmt.Errorf("RfcInvokeInUnit(%s): %w", fn, backend.ErrTimeout)
-			}
-			return fmt.Errorf("RfcInvokeInUnit(%s): %w", fn, backend.ErrCancelled)
+		if err := ctxErrorIfFired(ctx, "RfcInvokeInUnit("+fn+")"); err != nil {
+			return err
 		}
 		return errFromInfo(&info, "RfcInvokeInUnit("+fn+")")
 	}

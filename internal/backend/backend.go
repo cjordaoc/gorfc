@@ -90,7 +90,12 @@ type Backend interface {
 	// Reset clears the ABAP session state on the peer
 	// (`RfcResetServerContext`). Used between calls in a Pool
 	// to avoid LUW leakage.
-	Reset(h ConnHandle) error
+	//
+	// Honors ctx via the same cancel-watcher contract as
+	// Ping/Describe/Invoke: a cancelled ctx unblocks the call
+	// (when the backend supports cancellation) and returns
+	// either ErrTimeout or ErrCancelled.
+	Reset(ctx context.Context, h ConnHandle) error
 
 	// Describe fetches the metadata for the named RFC function.
 	// Backends MAY cache the result; callers can force a refetch
@@ -119,6 +124,36 @@ type Backend interface {
 type Trace interface {
 	SetTraceLevel(level int) error
 	SetTraceDir(dir string) error
+}
+
+// Cancellable is the optional capability-extension for backends
+// that can interrupt a blocking call on a [ConnHandle] from a
+// goroutine other than the one inside [Backend.Open],
+// [Backend.Ping], [Backend.Reset], [Backend.Describe], or
+// [Backend.Invoke].
+//
+// The cgo SAP NWRFC SDK backend implements this via `RfcCancel`
+// (see docs/EVIDENCE/sdk-cancel.md for evidence of symbol
+// availability and thread-safety). The mock and no-SDK stub
+// implement a best-effort no-op so the public API stays
+// uniform.
+//
+// Contract:
+//
+//   - Cancel MUST be safe to call concurrently with another
+//     goroutine blocked in any other Backend method on the same
+//     handle. Backends that cannot satisfy that contract (e.g.
+//     a future SDK that removes `RfcCancel`) MUST NOT
+//     implement this interface; the public API then degrades
+//     gracefully and returns *UnsupportedFeatureError to the
+//     caller.
+//   - Cancel MUST be idempotent. Repeated invocations on an
+//     already-cancelled-or-closed handle return nil.
+//   - Cancel MUST NOT close the handle. The owning goroutine
+//     unblocks with an error (typically RFC_CANCELLED), then
+//     calls [Backend.Close] in the normal lifecycle.
+type Cancellable interface {
+	Cancel(h ConnHandle) error
 }
 
 // IniReloader is an optional capability-extension for backends
