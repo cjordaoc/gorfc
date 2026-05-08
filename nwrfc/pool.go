@@ -42,6 +42,31 @@ type PoolConfig struct {
 	MaxLifetime    time.Duration
 	AcquireTimeout time.Duration
 	AfterAcquire   func(ctx context.Context, c *Conn) error
+
+	// AlwaysReset, when true, asks the pool to call
+	// [Conn.Reset] on every checkout BEFORE [AfterAcquire]
+	// runs and BEFORE the Conn is handed to the caller.
+	// Reset clears the SAP-side ABAP session state
+	// (RfcResetServerContext) so a previous caller's LUW,
+	// open transaction, or cached SQL cursor cannot leak
+	// into the next caller.
+	//
+	// Default: false (back-compat with v0.1).
+	//
+	// Risk of false: ABAP context CAN leak between
+	// checkouts. For pools that mix mutating BAPIs and ad-hoc
+	// reads — or that share a Conn across operators — set
+	// this to true.
+	//
+	// If Reset returns an error, the pool discards the Conn
+	// and surfaces the error to the Acquire caller. The
+	// pool then opens a fresh Conn on the next attempt.
+	//
+	// Ordering is fixed: Reset → AfterAcquire → return Conn.
+	// This matters because AfterAcquire commonly stamps
+	// session-level state (e.g. SetClient via a custom RFM);
+	// running Reset after AfterAcquire would erase that.
+	AlwaysReset bool
 }
 
 // poolEntry wraps a Conn with bookkeeping the pool needs.
@@ -151,10 +176,26 @@ func (p *Pool) Acquire(ctx context.Context) (*Conn, error) {
 				return nil, ctx.Err()
 			}
 		}
-		// Validate entry: idle timeout, lifetime, AfterAcquire.
+		// Validate entry: idle timeout, lifetime, AlwaysReset,
+		// AfterAcquire. Order matters: Reset MUST run before
+		// AfterAcquire so caller-installed session state is
+		// not erased by Reset.
 		if !p.entryValid(entry) {
 			p.discard(entry)
 			continue
+		}
+		if p.cfg.AlwaysReset {
+			if err := entry.conn.Reset(ctx); err != nil {
+				// A failed Reset proves the Conn is not in a
+				// state we can hand to the caller; discard
+				// and surface the error rather than loop. We
+				// do not retry-with-fresh: the caller asked
+				// for AlwaysReset specifically because they
+				// want guarantees, and a fresh Conn that
+				// fails Reset would loop forever.
+				p.discard(entry)
+				return nil, err
+			}
 		}
 		if p.cfg.AfterAcquire != nil {
 			if err := p.cfg.AfterAcquire(ctx, entry.conn); err != nil {

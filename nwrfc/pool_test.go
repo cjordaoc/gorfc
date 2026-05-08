@@ -6,6 +6,7 @@ package nwrfc_test
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -130,6 +131,123 @@ func TestPool_DoReleasesOnError(t *testing.T) {
 	if got := p.Stats().Open; got != 0 {
 		t.Errorf("Open after Do error=%d want 0", got)
 	}
+}
+
+// TestPool_AlwaysReset_CallsResetBeforeAfterAcquire asserts the
+// fixed ordering: Reset → AfterAcquire → return Conn. We track
+// the order via a backend that increments a counter on Reset
+// and an AfterAcquire that records the counter value at hook
+// time; AfterAcquire's seen-counter must be > 0 (Reset already
+// ran).
+func TestPool_AlwaysReset_CallsResetBeforeAfterAcquire(t *testing.T) {
+	rb := &resetTrackingBackend{}
+	prev := backend.SetTesting(rb)
+	t.Cleanup(prev)
+
+	var afterAcquireResetCount int32
+	p, err := nwrfc.NewPool(nwrfc.PoolConfig{
+		Params:      nwrfc.Params{AsHost: "h", SysNr: "00", User: "u", Passwd: "p"},
+		MaxSize:     2,
+		AlwaysReset: true,
+		AfterAcquire: func(_ context.Context, _ *nwrfc.Conn) error {
+			afterAcquireResetCount = rb.resetCount.Load()
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewPool: %v", err)
+	}
+	t.Cleanup(func() { _ = p.Close() })
+
+	c, err := p.Acquire(context.Background())
+	if err != nil {
+		t.Fatalf("Acquire: %v", err)
+	}
+	defer p.Release(c, false)
+
+	if afterAcquireResetCount == 0 {
+		t.Errorf("Reset did not run before AfterAcquire (counter at AfterAcquire=%d)",
+			afterAcquireResetCount)
+	}
+	if got := rb.resetCount.Load(); got < 1 {
+		t.Errorf("Reset count=%d; want >= 1", got)
+	}
+}
+
+// TestPool_AlwaysReset_DefaultFalseSkipsReset: with AlwaysReset
+// off (default), the pool does not call Reset. Back-compat with
+// v0.1.
+func TestPool_AlwaysReset_DefaultFalseSkipsReset(t *testing.T) {
+	rb := &resetTrackingBackend{}
+	prev := backend.SetTesting(rb)
+	t.Cleanup(prev)
+
+	p, err := nwrfc.NewPool(nwrfc.PoolConfig{
+		Params:  nwrfc.Params{AsHost: "h", SysNr: "00", User: "u", Passwd: "p"},
+		MaxSize: 2,
+	})
+	if err != nil {
+		t.Fatalf("NewPool: %v", err)
+	}
+	t.Cleanup(func() { _ = p.Close() })
+
+	c, err := p.Acquire(context.Background())
+	if err != nil {
+		t.Fatalf("Acquire: %v", err)
+	}
+	p.Release(c, false)
+
+	if got := rb.resetCount.Load(); got != 0 {
+		t.Errorf("Reset count=%d; want 0 with AlwaysReset=false", got)
+	}
+}
+
+// TestPool_AlwaysReset_ResetErrorSurfacesToCaller: a Reset that
+// fails terminates the Acquire with the wrapped error. The
+// pool does NOT loop and does NOT silently hand a Conn whose
+// state could not be cleared.
+func TestPool_AlwaysReset_ResetErrorSurfacesToCaller(t *testing.T) {
+	rb := &resetTrackingBackend{resetErr: errSampleReset}
+	prev := backend.SetTesting(rb)
+	t.Cleanup(prev)
+
+	p, err := nwrfc.NewPool(nwrfc.PoolConfig{
+		Params:      nwrfc.Params{AsHost: "h", SysNr: "00", User: "u", Passwd: "p"},
+		MaxSize:     2,
+		AlwaysReset: true,
+	})
+	if err != nil {
+		t.Fatalf("NewPool: %v", err)
+	}
+	t.Cleanup(func() { _ = p.Close() })
+
+	_, err = p.Acquire(context.Background())
+	if err == nil {
+		t.Fatal("Acquire returned nil error when Reset failed")
+	}
+}
+
+// errSampleReset is a sentinel used by the test above; the
+// resetTrackingBackend returns this verbatim from Reset when
+// configured with resetErr != nil.
+var errSampleReset = errSentinel("reset failed for test")
+
+type errSentinel string
+
+func (e errSentinel) Error() string { return string(e) }
+
+// resetTrackingBackend extends happyBackend with a per-call
+// counter and a configurable Reset error. Used by the
+// AlwaysReset tests.
+type resetTrackingBackend struct {
+	happyBackend
+	resetCount atomic.Int32
+	resetErr   error
+}
+
+func (b *resetTrackingBackend) Reset(_ context.Context, _ backend.ConnHandle) error {
+	b.resetCount.Add(1)
+	return b.resetErr
 }
 
 func TestPool_ConcurrentLoad(t *testing.T) {
