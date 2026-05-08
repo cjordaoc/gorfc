@@ -40,8 +40,13 @@ package gorfc
 // todo MD ? -lpthread -lm
 // todo -nologo -W3 -Z7  -GL -O2 -Oy- /we4552 /we4700 /we4789
 
-#cgo windows CFLAGS: -IC:/Tools/nwrfcsdk/include/
-#cgo windows LDFLAGS: -LC:/Tools/nwrfcsdk/lib/ -lsapnwrfc -llibsapucum
+// Hardcoded SDK paths were removed in v0.2.0 — operators set
+// CGO_CFLAGS / CGO_LDFLAGS via SAPNWRFC_HOME at build time
+// instead. See docs/INSTALL.md and docs/DEPLOY.md. The legacy
+// per-OS link flags below stay; the -I / -L lookup is the
+// build environment's job, exactly like internal/sdkbackend
+// does it.
+#cgo windows LDFLAGS: -lsapnwrfc -llibsapucum
 
 #cgo windows LDFLAGS: -O2 -g -pthread -pie -fPIE
 #cgo windows LDFLAGS: -OPT:REF -LTCG
