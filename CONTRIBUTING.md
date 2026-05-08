@@ -55,3 +55,63 @@ For API changes:
 - document compatibility with upstream `gorfc`, `node-rfc`, or PyRFC where
   relevant
 
+## Releasing (maintainer playbook)
+
+The agent does not cut tags. The maintainer cuts a signed tag
+after CI is green on `master` and the `linux-sdk-real` job has
+been triggered manually with the SAP NW RFC SDK in the
+self-hosted runner environment.
+
+### v0.2.0 (and later) signed-tag procedure
+
+1. Confirm the [Definition of Done](docs/ROADMAP_NEXUS_INTEGRATION.md#11-definition-of-done-v020)
+   for the release.
+2. Confirm `CHANGES` has a v0.2.0 section dated today, with
+   breaking changes called out and the minimum SDK PL stated.
+3. Run a final local sweep:
+
+   ```bash
+   gofmt -l .                                         # must be empty
+   go vet ./...                                       # must be clean
+   go vet -tags nwrfc_nosdk ./...                     # must be clean
+   CGO_ENABLED=0 go test -tags nwrfc_nosdk ./...      # must be green
+   CGO_ENABLED=1 go test -tags nwrfc_nosdk -race ./...# must be green
+   ```
+
+4. Confirm CI is green on `master` for `linux-nosdk`,
+   `windows-nosdk`, `linux-to-windows-cross`.
+
+5. (Optional but recommended) Trigger the manual
+   `linux-sdk-real` GHA job and confirm green.
+
+6. Sign and push the tag. The tag MUST be a signed annotated
+   tag — do not use a lightweight tag for releases.
+
+   ```bash
+   git tag -s v0.2.0 -m "v0.2.0: nexus-spec integration hardening"
+   git push origin v0.2.0
+   ```
+
+7. After the push, verify the tag is recognized by the Go module
+   proxy:
+
+   ```bash
+   GOFLAGS=-mod=mod go install github.com/cjordaoc/gorfc/cmd/nwrfc@v0.2.0
+   ```
+
+   The first `go install` against a fresh tag may take up to a
+   few minutes while the module proxy caches the version.
+
+8. Cut a release on GitHub from the same tag. Paste the v0.2.0
+   section of `CHANGES` into the release notes; cross-link to
+   `docs/ROADMAP_NEXUS_INTEGRATION.md`.
+
+9. If the release introduces a new minimum SAP NW RFC SDK PL,
+   update `docs/INSTALL.md` and `docs/SDK_FUNCTIONS_MAP.md` in
+   a follow-up PR (or the same PR that cut the version bump),
+   and call the change out at the top of the v0.2.0 release
+   notes.
+
+The maintainer does NOT delete or re-tag a published version.
+If a release is broken, cut a `v0.2.1` instead.
+

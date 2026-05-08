@@ -5,6 +5,139 @@ This file follows Keep a Changelog (https://keepachangelog.com/) and
 SemVer with the relaxation declared in docs/PLAN.md §12 decision 12:
 v0.x is unstable; v1.0.0 freezes the public API.
 
+## v0.2.0 — 2026-05-08 (nexus-spec integration hardening)
+
+The v0.2.0 cycle is the production-readiness pass for the
+nexus-spec downstream consumer. It hardens the public nwrfc
+API for first-class Windows VDI deployment (Citrix, VMware
+Horizon, AWS WorkSpaces, AVD), introduces refined error and
+redaction taxonomies, and locks the cancellation contract.
+
+The roadmap that drove this release is
+docs/ROADMAP_NEXUS_INTEGRATION.md. Every item below has an
+entry in that document with acceptance criteria.
+
+### Minimum SDK supported
+
+- SAP NetWeaver RFC SDK 7.50 PL3+. PL18 is the verified
+  reference. WebSocket RFC requires PL10+; bgRFC requires
+  PL5+. See docs/SDK_FUNCTIONS_MAP.md.
+
+### Breaking changes vs v0.1.x
+
+- `Conn.Reset()` now takes a `context.Context` parameter
+  (`Conn.Reset(ctx)`). The old zero-arg form is removed.
+  Callers using `pool.Do` or `AfterAcquire` already pass a
+  ctx — update the inner `c.Reset()` call to `c.Reset(ctx)`.
+- `backend.Backend.Reset` interface signature also adds the
+  ctx parameter; this affects `nwrfcmock` and any
+  out-of-tree backend implementation. The change is
+  necessary for the unified cancel-watcher contract: every
+  blocking op honors ctx through the same path.
+- `LogonError` is now sometimes a `*PasswordExpiredError` /
+  `*UserLockedError` / `*InvalidCredentialsError` /
+  `*UnknownLogonFailureError` (subtypes embedding
+  LogonError). Generic callers using
+  `errors.Is(err, ErrLogon)` or
+  `errors.As(err, &le *LogonError)` keep working unchanged.
+  Callers that branched on the concrete `*LogonError` type
+  alone now lose specificity to the subtypes — switch to
+  `errors.As` against the subtype, or stay on `errors.Is`
+  against `ErrLogon`.
+
+### Added
+
+- `Conn.Cancel() error` — public mid-call cancel. Idempotent,
+  goroutine-safe, calls `RfcCancel` via the new
+  `backend.Cancellable` capability. Documented SAP caveat for
+  mutating BAPIs (`outcome unknown`).
+  Evidence: docs/EVIDENCE/sdk-cancel.md.
+- Logon error subtypes:
+  - `*PasswordExpiredError` + `ErrPasswordExpired`
+  - `*UserLockedError` + `ErrUserLocked`
+  - `*InvalidCredentialsError` + `ErrInvalidCredentials`
+  - `*UnknownLogonFailureError` + `ErrUnknownLogonFailure`
+  Classification table is the single source of truth in
+  `nwrfc/errors_logon.go`.
+- Public type aliases `nwrfc.Date`, `nwrfc.Time`,
+  `nwrfc.UTCLong`, `nwrfc.Decimal`. Callers no longer need
+  to import `internal/backend` for ABAP scalar struct
+  fields. Convenience function `nwrfc.AsTime(d, t)`.
+- `Params.MaxTraceLevel int` — process-global trace cap with
+  tightest-wins semantics. `SetTraceLevel(n)` with `n` above
+  the installed cap returns `*ConfigError` referencing
+  docs/SECURITY.md §5.
+- `PoolConfig.AlwaysReset bool` — when true, the pool calls
+  `Conn.Reset` on every checkout BEFORE `AfterAcquire`. A
+  failed Reset surfaces to the Acquire caller; the pool does
+  not loop.
+- `nwrfc.Params` implements `fmt.Stringer` and `fmt.GoStringer`
+  with the same redaction policy as `LogValue`. Accidental
+  `fmt.Println(p)` no longer leaks credentials.
+- Hardlock for `Params.WSHost` against
+  `Capabilities.WebSocketRFC`: an Open with WSHost set on a
+  PL that does not support WebSocket RFC fails fast with
+  `*UnsupportedFeatureError`. No silent transport downgrade.
+- `EnsureSDK`, `SDKVersion`, `Capabilities` now memoized via
+  `sync.OnceValue`. Repeated calls are zero-cost.
+- New shared cgo cancel watcher (`internal/sdkbackend/cancel.go`)
+  — Open, Ping, Reset, Describe, Invoke, InvokeInTransaction,
+  InvokeInUnit all go through one helper. Eliminates the
+  duplicated goroutine pattern previously inlined in five
+  files.
+
+### Changed
+
+- `internal/backend/types.go::SensitiveKeys` extended with
+  `snc_sso`. New `SensitivePrefixes` and `SensitiveSuffixes`
+  catch families like `passwd_*`, `*_token`, `*_secret`,
+  `*_key`, `bearer*`, `saml*`, `x509*`, `snc*`,
+  `mysapsso*`. Single source of truth via `IsSensitiveKey`.
+- `nwrfcotel` and `nwrfc/errors.go` consult `IsSensitiveKey`
+  rather than carrying their own match tables.
+- The legacy `gorfc/gorfc.go` file no longer hardcodes
+  `C:/Tools/nwrfcsdk` paths. Operators set `CGO_CFLAGS` /
+  `CGO_LDFLAGS` via `SAPNWRFC_HOME` (matches the
+  `internal/sdkbackend/cgo_directives.go` pattern).
+- Logon errors emitted from the cgo backend route through
+  `buildLogonError` so `errors.Is(err, ErrLogon)` and the
+  new subtype sentinels both work.
+
+### Documentation
+
+- `docs/ROADMAP_NEXUS_INTEGRATION.md` (NEW) — the living
+  roadmap that drives this release.
+- `docs/DEPLOY.md` (NEW) — VDI deployment playbook covering
+  Linux RHEL/Ubuntu LTS, Windows Server 2019+, Windows 10/11
+  Enterprise, Citrix, VMware Horizon, AWS WorkSpaces, AVD.
+  Documents `$ORIGIN`-relative rpath, Windows DLL
+  co-location, and the anti-patterns to avoid.
+- `docs/EVIDENCE/SCHEMA.md` (NEW) — mandatory schema for
+  Categoria-B (live SAP) integration test evidence.
+- `docs/EVIDENCE/sdk-cancel.md` (NEW) — RfcCancel symbol
+  presence and thread-safety evidence for the §3 decision in
+  the roadmap.
+- `docs/BUILD.md` — added IDE / gopls configuration for
+  developers without local SDK headers.
+- `CONTRIBUTING.md` — added the maintainer signed-tag
+  release procedure.
+- `docs/ERRORS.md` — TBD to be updated with the logon
+  subtypes and the cancellation caveat (tracked under the
+  v0.2.0 follow-up doc-sync).
+
+### CI
+
+- `.github/workflows/ci.yml` (NEW) — Linux nosdk + Windows
+  nosdk + Linux→Windows zig cross-compile + manual SDK-real
+  matrix. Aggregator job for required-status check.
+
+### Security
+
+- All v0.2.0 changes preserve the AGENTS.md non-negotiables:
+  no SDK redistribution, no credential leakage in logs, no
+  silent fallback when a capability is missing or an SDK
+  call fails.
+
 ## Unreleased — 2026-05-07 (tRFC/qRFC/bgRFC client wiring + qRFC correction)
 
 Implements the cgo bindings and Go-side dispatch for the

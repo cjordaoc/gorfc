@@ -194,6 +194,77 @@ docs:
   `nwrfc.Server` (Tier 2.7)
 - `cmd/nwrfc-gen` for typed BAPI client codegen (Tier 4.2)
 
+## v0.2.0 breaking changes
+
+The v0.2.0 cycle introduced one source-level breaking change
+plus a handful of additive shapes to be aware of when porting:
+
+### Required edits
+
+* **`Conn.Reset()` now takes a context.** Replace
+  `c.Reset()` with `c.Reset(ctx)`. The `ctx` honors the same
+  cancel-watcher contract as `Ping` / `Invoke`. Pool
+  `AfterAcquire` callbacks already receive `ctx` and should
+  pass it through verbatim.
+
+  ```go
+  // Before (v0.1.x)
+  AfterAcquire: func(ctx context.Context, c *nwrfc.Conn) error {
+      return c.Reset()
+  }
+
+  // After (v0.2.0+)
+  AfterAcquire: func(ctx context.Context, c *nwrfc.Conn) error {
+      return c.Reset(ctx)
+  }
+  ```
+
+* **`backend.Backend.Reset` interface signature** also gains
+  the ctx parameter. Out-of-tree backend implementations
+  (custom mocks, alternate transports) need to update.
+  `nwrfcmock` and the in-tree backends were updated in the
+  same commit.
+
+### Additive (no migration, but worth knowing)
+
+* **Logon errors are now subtyped.**
+  `errors.Is(err, nwrfc.ErrLogon)` keeps working unchanged.
+  Specific subtypes (`*PasswordExpiredError`,
+  `*UserLockedError`, `*InvalidCredentialsError`,
+  `*UnknownLogonFailureError`) are extractable via
+  `errors.As` for finer UX. See
+  [docs/ERRORS.md](ERRORS.md#logon-subtypes-v020).
+
+* **`Conn.Cancel()`** is a new public method for mid-call
+  cancellation. The cancel-watcher inside Open / Ping /
+  Reset / Describe / Invoke also fires automatically when
+  ctx is cancelled, so you only call `Cancel` directly for
+  panic-button shutdown signals or signal-handler abort
+  paths.
+
+* **`Params.MaxTraceLevel`** caps how high
+  `nwrfc.SetTraceLevel` can be set process-wide. Defaults
+  to 0 (no cap). For regulated environments, set to 1 (or
+  0) at process start.
+
+* **`PoolConfig.AlwaysReset`** opts the pool into calling
+  `Reset` before every checkout, preventing ABAP context
+  leak between callers. Default is false (back-compat).
+
+* **`nwrfc.Date`, `nwrfc.Time`, `nwrfc.UTCLong`,
+  `nwrfc.Decimal`** are public type aliases for the
+  internal types. Consumers no longer need to import
+  `internal/...` to declare struct fields of ABAP scalar
+  types.
+
+* **`nwrfc.Params.String()`** redacts credentials. Fixes a
+  surprise where `fmt.Sprintf("%v", p)` would otherwise
+  emit the raw struct via reflection-based formatting.
+
+* **WSHost without `Capabilities.WebSocketRFC`** now fails
+  fast with `*UnsupportedFeatureError`. No silent transport
+  downgrade.
+
 ## Tested with
 
 - Linux x86_64 + Go 1.26 + SAP NetWeaver RFC SDK 7.50 PL18.
