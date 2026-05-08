@@ -1,0 +1,195 @@
+# SPDX-FileCopyrightText: 2026 gorfc community contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# Continuous integration matrix.
+#
+# This workflow exercises the no-SDK build paths exhaustively
+# (Linux + Windows + cross-compile) on every PR. SDK-real and
+# SAP-real validations are gated to a workflow_dispatch entry
+# point and a self-hosted runner respectively, so PRs from
+# external contributors do not require SDK / SAP secrets.
+#
+# AGENTS.md non-negotiable: no SDK redistribution, no
+# credentials, no SAP-specific test data. The matrix here is
+# entirely SDK-free; Categoria B (SAP-real) tests run on the
+# maintainer's Windows VDI per scripts/run-integration-tests.ps1.
+#
+# Required gates per docs/ROADMAP_NEXUS_INTEGRATION.md §7.
+
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: ["**"]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+
+  # -----------------------------------------------------------
+  # Linux native: build, vet, race, nosdk-tests with both tags.
+  # The default "no tags" build of nwrfc/ also compiles because
+  # the cgo backend file uses //go:build cgo && !nwrfc_nosdk;
+  # without the SDK headers it is excluded from the build, and
+  # the no-SDK stub takes over.
+  # -----------------------------------------------------------
+  linux-nosdk:
+    name: linux-nosdk
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      - name: gofmt
+        run: |
+          set -e
+          out=$(gofmt -l .)
+          if [ -n "$out" ]; then
+            echo "gofmt would reformat:"
+            echo "$out"
+            exit 1
+          fi
+
+      - name: go vet (default tags)
+        run: go vet ./...
+
+      - name: go vet (nwrfc_nosdk)
+        run: go vet -tags nwrfc_nosdk ./...
+
+      - name: go test (nwrfc_nosdk)
+        env:
+          CGO_ENABLED: "0"
+        run: go test -tags nwrfc_nosdk ./...
+
+      - name: go test (nwrfc_nosdk -race)
+        env:
+          CGO_ENABLED: "1"
+        run: go test -tags nwrfc_nosdk -race ./...
+
+  # -----------------------------------------------------------
+  # Windows native (no SDK): the windows-latest runner with
+  # MinGW-w64 GCC by default. We compile in nwrfc_nosdk mode so
+  # no SAP NW RFC SDK is needed. Catches Windows-only bugs in
+  # pure-Go code paths: path separators, file mode bits,
+  # process.Executable() resolution, etc.
+  # -----------------------------------------------------------
+  windows-nosdk:
+    name: windows-nosdk
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      - name: go build (nwrfc_nosdk)
+        shell: pwsh
+        run: |
+          $env:CGO_ENABLED = "0"
+          go build -tags nwrfc_nosdk ./...
+
+      - name: go test (nwrfc_nosdk)
+        shell: pwsh
+        run: |
+          $env:CGO_ENABLED = "0"
+          go test -tags nwrfc_nosdk ./...
+
+  # -----------------------------------------------------------
+  # Linux → Windows cross-compile via zig cc. We do NOT have the
+  # SAP NW RFC SDK Windows headers in the public CI environment,
+  # so we cross-compile in nwrfc_nosdk mode only. This matrix
+  # entry catches the cgo cross-link surface that the native
+  # nosdk build cannot exercise (Windows-specific link flags in
+  # internal/sdkbackend/cgo_directives.go are guarded by
+  # !nwrfc_nosdk and so do not run here either; the goal is to
+  # prove the *Go* cross-compile is sound).
+  # -----------------------------------------------------------
+  linux-to-windows-cross:
+    name: linux→windows cross (zig cc, nosdk)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      - name: install zig
+        run: |
+          set -e
+          ZIG_VERSION="0.13.0"
+          curl -L -o zig.tar.xz \
+            "https://ziglang.org/download/${ZIG_VERSION}/zig-linux-x86_64-${ZIG_VERSION}.tar.xz"
+          tar -xf zig.tar.xz
+          mv "zig-linux-x86_64-${ZIG_VERSION}" "$HOME/.zig"
+          echo "$HOME/.zig" >> "$GITHUB_PATH"
+
+      - name: cross-compile to windows/amd64 (nosdk)
+        env:
+          GOOS: windows
+          GOARCH: amd64
+          CGO_ENABLED: "0"
+        run: |
+          go build -tags nwrfc_nosdk ./...
+
+  # -----------------------------------------------------------
+  # SDK-real Linux build. Requires the SAP NW RFC SDK to be
+  # present at $SAPNWRFC_HOME on the runner; gated on a
+  # workflow_dispatch trigger so external PRs cannot consume
+  # the SDK secret. The maintainer runs this before tagging.
+  # -----------------------------------------------------------
+  linux-sdk-real:
+    name: linux-sdk-real (manual)
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: [self-hosted, sap-sdk]
+    env:
+      SAPNWRFC_HOME: ${{ secrets.SAPNWRFC_HOME }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      - name: confirm SDK present
+        run: |
+          set -e
+          test -n "$SAPNWRFC_HOME"
+          test -f "$SAPNWRFC_HOME/lib/libsapnwrfc.so"
+          test -f "$SAPNWRFC_HOME/include/sapnwrfc.h"
+
+      - name: build with SDK
+        env:
+          CGO_ENABLED: "1"
+          CGO_CFLAGS: -I${{ secrets.SAPNWRFC_HOME }}/include
+          CGO_LDFLAGS: -L${{ secrets.SAPNWRFC_HOME }}/lib -Wl,-rpath,${{ secrets.SAPNWRFC_HOME }}/lib
+        run: go build ./...
+
+      - name: test with SDK (no SAP system needed)
+        env:
+          CGO_ENABLED: "1"
+          CGO_CFLAGS: -I${{ secrets.SAPNWRFC_HOME }}/include
+          CGO_LDFLAGS: -L${{ secrets.SAPNWRFC_HOME }}/lib -Wl,-rpath,${{ secrets.SAPNWRFC_HOME }}/lib
+        run: |
+          go test ./internal/sdktest/... ./nwrfc/...
+
+  # -----------------------------------------------------------
+  # Aggregator: a single status check PR reviewers can require.
+  # -----------------------------------------------------------
+  ci-summary:
+    name: ci-summary
+    runs-on: ubuntu-latest
+    needs:
+      - linux-nosdk
+      - windows-nosdk
+      - linux-to-windows-cross
+    steps:
+      - run: echo "All required CI gates green."

@@ -104,9 +104,55 @@ Set `GOFLAGS=-trimpath -buildvcs=false` and pin the SAP SDK release
 same `go.sum`, `SAPNWRFC_HOME` SDK PL, and `CC` produce
 byte-identical binaries on Linux+amd64.
 
+## IDE / gopls configuration
+
+The cgo files under `internal/sdkbackend/*.go` and the legacy
+`gorfc/gorfc.go` carry `//go:build cgo && !nwrfc_nosdk`. They
+`#include <sapnwrfc.h>`, so on a developer machine without the
+SAP NW RFC SDK headers installed locally, gopls will report
+`undefined: C.RfcOpenConnection` and similar errors when it
+tries to index those files.
+
+This is **not** a build problem (the no-SDK build excludes the
+files entirely; the SDK build needs the headers anyway). It is
+a per-developer LSP indexing concern. Two ways to silence it:
+
+**Option A** — point gopls at the SDK headers locally
+(recommended when you do have the SDK installed):
+
+```jsonc
+// .vscode/settings.json (per developer; .vscode is gitignored)
+{
+  "go.toolsEnvVars": {
+    "CGO_CFLAGS":  "-I/opt/sap/nwrfcsdk/include",
+    "CGO_LDFLAGS": "-L/opt/sap/nwrfcsdk/lib"
+  }
+}
+```
+
+**Option B** — tell gopls to index the no-SDK side only, so
+the cgo files are simply excluded from indexing:
+
+```jsonc
+// .vscode/settings.json (per developer; .vscode is gitignored)
+{
+  "gopls": {
+    "build.buildFlags": ["-tags=nwrfc_nosdk"]
+  }
+}
+```
+
+Both options are local to the developer machine. The repo
+deliberately does not commit `.vscode/` (see `.gitignore`).
+
+For Vim / Neovim with `coc-go` or `gopls` direct, set
+`build.buildFlags` to `["-tags=nwrfc_nosdk"]` in the LSP
+settings.
+
 ## See also
 
 - [INSTALL.md](INSTALL.md) — quickstart per OS.
+- [DEPLOY.md](DEPLOY.md) — VDI / production deployment.
 - [SDK_FUNCTIONS_MAP.md](SDK_FUNCTIONS_MAP.md) — every SDK function
   the binding uses, with verification status.
 - [PLAN.md §6](PLAN.md#6-internal-cgo-binding-strategy) — the cgo
