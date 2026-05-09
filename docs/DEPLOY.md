@@ -202,13 +202,21 @@ supported CLI probes are:
 .\nwrfc.exe --version
 .\nwrfc.exe health --json
 .\nwrfc.exe preflight --json
+.\nwrfc.exe test-connection --json
 ```
 
 `--version` works in no-SDK builds and reports `sdk_version:"no-sdk"`.
 `health` and `preflight` fail explicitly when the binary was built with
-`-tags nwrfc_nosdk` or when SDK DLLs are missing. `preflight` performs a SAP
-ping only when the `GORFC_TEST_*` connection variables are present; otherwise
-it reports `connection:"not_configured"` and remains a packaging check.
+`-tags nwrfc_nosdk` or when SDK DLLs are missing. `preflight` reports
+`SAPNWRFC_HOME`, required header/DLL presence, process architecture, SDK
+version, capability flags, and dynamic-load status. It performs a SAP ping only
+when the `GORFC_TEST_*` connection variables are present; otherwise it reports
+`connection:"not_configured"` and remains a packaging check.
+`test-connection --json` requires both a real SDK-linked binary and complete
+`GORFC_TEST_ASHOST`, `GORFC_TEST_SYSNR`, `GORFC_TEST_CLIENT`,
+`GORFC_TEST_USER`, and `GORFC_TEST_PASSWD`; it is the non-destructive DEV /
+Sandbox RFC ping gate. Error output is redacted against runtime secret
+environment values before it is printed.
 
 The SAP NW RFC SDK is customer-provided. Do not vendor, embed, commit, or
 redistribute `sapnwrfc.dll`, `sapucum.dll`, ICU DLLs, CommonCryptoLib, SDK

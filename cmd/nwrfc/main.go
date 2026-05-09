@@ -12,6 +12,7 @@
 //	nwrfc call FN k=v ... - invoke and dump the response
 //	nwrfc health          - local SDK/loadability health
 //	nwrfc preflight       - SDK and optional SAP connection preflight
+//	nwrfc test-connection - require SDK + SAP connection ping
 //	nwrfc version         - print SDK and library versions
 //
 // Connection parameters come from GORFC_TEST_* env vars (the
@@ -23,6 +24,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -41,6 +44,8 @@ func main() {
 		health(os.Args[2:])
 	case "preflight":
 		preflight(os.Args[2:])
+	case "test-connection":
+		testConnection(os.Args[2:])
 	case "ping":
 		ensureSDK()
 		ping()
@@ -70,6 +75,7 @@ Commands:
   ping                  Ping the SAP system.
   health                Report SDK loadability and packaging status.
   preflight             Report SDK status and ping only when env config exists.
+  test-connection       Require SDK + env config and ping the SAP system.
   describe FUNCTION     Print the function descriptor as JSON.
   call FUNCTION KV...   Invoke a function with KEY=VALUE params.
   version               Print SDK + library versions.
@@ -105,7 +111,7 @@ func health(args []string) {
 		"capabilities": nwrfc.Capabilities(),
 	}
 	if err != nil {
-		out["error"] = err.Error()
+		out["error"] = redactRuntimeSecrets(err.Error())
 	}
 	if hasJSON(args) {
 		printJSON(out)
@@ -121,14 +127,9 @@ func health(args []string) {
 
 func preflight(args []string) {
 	err := nwrfc.EnsureSDK()
-	out := map[string]any{
-		"ok":           err == nil,
-		"sdk_version":  nwrfc.SDKVersion().String(),
-		"capabilities": nwrfc.Capabilities(),
-		"connection":   "not_configured",
-	}
+	out := preflightReport(err)
 	if err != nil {
-		out["error"] = err.Error()
+		out["error"] = redactRuntimeSecrets(err.Error())
 		printPreflight(out, args, 1)
 		return
 	}
@@ -139,7 +140,7 @@ func preflight(args []string) {
 		if openErr != nil {
 			out["ok"] = false
 			out["connection"] = "failed"
-			out["error"] = openErr.Error()
+			out["error"] = redactRuntimeSecrets(openErr.Error())
 			printPreflight(out, args, 1)
 			return
 		}
@@ -147,12 +148,141 @@ func preflight(args []string) {
 		if pingErr := c.Ping(ctx); pingErr != nil {
 			out["ok"] = false
 			out["connection"] = "failed"
-			out["error"] = pingErr.Error()
+			out["error"] = redactRuntimeSecrets(pingErr.Error())
 			printPreflight(out, args, 1)
 			return
 		}
 		out["connection"] = "ok"
 	}
+	printPreflight(out, args, 0)
+}
+
+func preflightReport(err error) map[string]any {
+	return map[string]any{
+		"ok":              err == nil,
+		"sdk_version":     nwrfc.SDKVersion().String(),
+		"capabilities":    nwrfc.Capabilities(),
+		"connection":      "not_configured",
+		"sapnwrfc_home":   sapNWRFCHomeStatus(),
+		"required_files":  requiredRuntimeFiles(),
+		"runtime":         runtimeStatus(),
+		"dynamic_loading": map[string]any{"ok": err == nil, "error": errorString(err)},
+	}
+}
+
+func sapNWRFCHomeStatus() map[string]any {
+	home := strings.TrimSpace(os.Getenv("SAPNWRFC_HOME"))
+	return map[string]any{
+		"set":    home != "",
+		"path":   safePath(home),
+		"exists": home != "" && pathExists(home),
+	}
+}
+
+func requiredRuntimeFiles() []map[string]any {
+	home := strings.TrimSpace(os.Getenv("SAPNWRFC_HOME"))
+	out := []map[string]any{}
+	if home != "" {
+		out = append(out, fileStatus("sapnwrfc.h", filepath.Join(home, "include", "sapnwrfc.h")))
+	}
+	libDir := ""
+	if home != "" {
+		libDir = filepath.Join(home, "lib")
+	}
+	for _, name := range requiredLibraryNames() {
+		path := ""
+		if libDir != "" {
+			path = filepath.Join(libDir, name)
+		}
+		out = append(out, fileStatus(name, path))
+	}
+	return out
+}
+
+func requiredLibraryNames() []string {
+	switch runtime.GOOS {
+	case "windows":
+		return []string{"sapnwrfc.dll", "libsapucum.dll"}
+	case "darwin":
+		return []string{"libsapnwrfc.dylib", "libsapucum.dylib"}
+	default:
+		return []string{"libsapnwrfc.so", "libsapucum.so"}
+	}
+}
+
+func fileStatus(name, path string) map[string]any {
+	return map[string]any{
+		"name":   name,
+		"path":   safePath(path),
+		"exists": strings.TrimSpace(path) != "" && pathExists(path),
+	}
+}
+
+func runtimeStatus() map[string]any {
+	return map[string]any{
+		"goos":       runtime.GOOS,
+		"goarch":     runtime.GOARCH,
+		"cgo_linked": nwrfc.SDKVersion().String() != "no-sdk",
+	}
+}
+
+func pathExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+func safePath(path string) string {
+	if strings.TrimSpace(path) == "" {
+		return ""
+	}
+	return filepath.Clean(path)
+}
+
+func errorString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return redactRuntimeSecrets(err.Error())
+}
+
+func testConnection(args []string) {
+	err := nwrfc.EnsureSDK()
+	out := preflightReport(err)
+	if err != nil {
+		out["ok"] = false
+		out["connection"] = "failed"
+		out["error"] = redactRuntimeSecrets(err.Error())
+		printPreflight(out, args, 1)
+		return
+	}
+	if !paramsComplete() {
+		out["ok"] = false
+		out["connection"] = "not_configured"
+		out["error"] = "GORFC_TEST_ASHOST, GORFC_TEST_SYSNR, GORFC_TEST_CLIENT, GORFC_TEST_USER, and GORFC_TEST_PASSWD are required"
+		printPreflight(out, args, 1)
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	c, openErr := nwrfc.Open(ctx, paramsFromEnv())
+	if openErr != nil {
+		out["ok"] = false
+		out["connection"] = "failed"
+		out["error"] = redactRuntimeSecrets(openErr.Error())
+		printPreflight(out, args, 1)
+		return
+	}
+	defer c.Close()
+	if pingErr := c.Ping(ctx); pingErr != nil {
+		out["ok"] = false
+		out["connection"] = "failed"
+		out["error"] = redactRuntimeSecrets(pingErr.Error())
+		printPreflight(out, args, 1)
+		return
+	}
+	attrs, _ := c.Attributes()
+	out["connection"] = "ok"
+	out["attributes"] = map[string]any{"sys_id": attrs.SysID, "client": attrs.Client, "user": attrs.User}
 	printPreflight(out, args, 0)
 }
 
@@ -187,6 +317,22 @@ func printJSON(v any) {
 	fmt.Println(string(bytes))
 }
 
+func redactRuntimeSecrets(s string) string {
+	out := s
+	for _, key := range []string{
+		"GORFC_TEST_PASSWD",
+		"GORFC_TEST_PASSWORD",
+		"GORFC_TEST_MYSAPSSO2",
+		"GORFC_TEST_BEARER",
+		"GORFC_TEST_SAML2",
+	} {
+		if value := os.Getenv(key); len(value) >= 4 {
+			out = strings.ReplaceAll(out, value, "«redacted»")
+		}
+	}
+	return out
+}
+
 func paramsFromEnv() nwrfc.Params {
 	return nwrfc.Params{
 		AsHost: os.Getenv("GORFC_TEST_ASHOST"),
@@ -203,11 +349,11 @@ func ping() {
 	defer cancel()
 	c, err := nwrfc.Open(ctx, paramsFromEnv())
 	if err != nil {
-		fail("Open: %v", err)
+		fail("Open: %v", redactRuntimeSecrets(err.Error()))
 	}
 	defer c.Close()
 	if err := c.Ping(ctx); err != nil {
-		fail("Ping: %v", err)
+		fail("Ping: %v", redactRuntimeSecrets(err.Error()))
 	}
 	attrs, _ := c.Attributes()
 	fmt.Printf("OK: %s/%s as %s\n", attrs.SysID, attrs.Client, attrs.User)
@@ -218,12 +364,12 @@ func describe(fn string) {
 	defer cancel()
 	c, err := nwrfc.Open(ctx, paramsFromEnv())
 	if err != nil {
-		fail("Open: %v", err)
+		fail("Open: %v", redactRuntimeSecrets(err.Error()))
 	}
 	defer c.Close()
 	d, err := c.Describe(ctx, fn)
 	if err != nil {
-		fail("Describe: %v", err)
+		fail("Describe: %v", redactRuntimeSecrets(err.Error()))
 	}
 	bytes, _ := json.MarshalIndent(d, "", "  ")
 	fmt.Println(string(bytes))
@@ -242,12 +388,12 @@ func call(fn string, kv []string) {
 	defer cancel()
 	c, err := nwrfc.Open(ctx, paramsFromEnv())
 	if err != nil {
-		fail("Open: %v", err)
+		fail("Open: %v", redactRuntimeSecrets(err.Error()))
 	}
 	defer c.Close()
 	out, err := nwrfc.CallMap(ctx, c, fn, in)
 	if err != nil {
-		fail("Call %s: %v", fn, err)
+		fail("Call %s: %v", fn, redactRuntimeSecrets(err.Error()))
 	}
 	bytes, _ := json.MarshalIndent(out, "", "  ")
 	fmt.Println(string(bytes))
