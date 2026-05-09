@@ -10,6 +10,8 @@
 //	nwrfc ping            - RfcPing the connection
 //	nwrfc describe FN     - print the function descriptor
 //	nwrfc call FN k=v ... - invoke and dump the response
+//	nwrfc health          - local SDK/loadability health
+//	nwrfc preflight       - SDK and optional SAP connection preflight
 //	nwrfc version         - print SDK and library versions
 //
 // Connection parameters come from GORFC_TEST_* env vars (the
@@ -32,21 +34,24 @@ func main() {
 		usage()
 		os.Exit(2)
 	}
-	if err := nwrfc.EnsureSDK(); err != nil {
-		fail("nwrfc CLI requires SDK: %v", err)
-	}
 	switch os.Args[1] {
-	case "version":
-		fmt.Printf("nwrfc CLI; SDK %s; capabilities=%+v\n",
-			nwrfc.SDKVersion(), nwrfc.Capabilities())
+	case "--version", "version":
+		version(os.Args[2:])
+	case "health":
+		health(os.Args[2:])
+	case "preflight":
+		preflight(os.Args[2:])
 	case "ping":
+		ensureSDK()
 		ping()
 	case "describe":
+		ensureSDK()
 		if len(os.Args) < 3 {
 			fail("usage: nwrfc describe FUNCTION_NAME")
 		}
 		describe(os.Args[2])
 	case "call":
+		ensureSDK()
 		if len(os.Args) < 3 {
 			fail("usage: nwrfc call FUNCTION_NAME [PARAM=VALUE ...]")
 		}
@@ -63,12 +68,123 @@ func usage() {
 
 Commands:
   ping                  Ping the SAP system.
+  health                Report SDK loadability and packaging status.
+  preflight             Report SDK status and ping only when env config exists.
   describe FUNCTION     Print the function descriptor as JSON.
   call FUNCTION KV...   Invoke a function with KEY=VALUE params.
   version               Print SDK + library versions.
 
 Connection parameters come from GORFC_TEST_USER, GORFC_TEST_PASSWD,
 GORFC_TEST_ASHOST, GORFC_TEST_SYSNR, GORFC_TEST_CLIENT, GORFC_TEST_LANG.`)
+}
+
+func ensureSDK() {
+	if err := nwrfc.EnsureSDK(); err != nil {
+		fail("nwrfc CLI requires SDK: %v", err)
+	}
+}
+
+func version(args []string) {
+	out := map[string]any{
+		"cli":          "nwrfc",
+		"sdk_version":  nwrfc.SDKVersion().String(),
+		"capabilities": nwrfc.Capabilities(),
+	}
+	if hasJSON(args) {
+		printJSON(out)
+		return
+	}
+	fmt.Printf("nwrfc CLI; SDK %s; capabilities=%+v\n", nwrfc.SDKVersion(), nwrfc.Capabilities())
+}
+
+func health(args []string) {
+	err := nwrfc.EnsureSDK()
+	out := map[string]any{
+		"ok":           err == nil,
+		"sdk_version":  nwrfc.SDKVersion().String(),
+		"capabilities": nwrfc.Capabilities(),
+	}
+	if err != nil {
+		out["error"] = err.Error()
+	}
+	if hasJSON(args) {
+		printJSON(out)
+	} else if err != nil {
+		fmt.Printf("SDK unavailable: %v\n", err)
+	} else {
+		fmt.Printf("OK: SDK %s capabilities=%+v\n", nwrfc.SDKVersion(), nwrfc.Capabilities())
+	}
+	if err != nil {
+		os.Exit(1)
+	}
+}
+
+func preflight(args []string) {
+	err := nwrfc.EnsureSDK()
+	out := map[string]any{
+		"ok":           err == nil,
+		"sdk_version":  nwrfc.SDKVersion().String(),
+		"capabilities": nwrfc.Capabilities(),
+		"connection":   "not_configured",
+	}
+	if err != nil {
+		out["error"] = err.Error()
+		printPreflight(out, args, 1)
+		return
+	}
+	if paramsComplete() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		c, openErr := nwrfc.Open(ctx, paramsFromEnv())
+		if openErr != nil {
+			out["ok"] = false
+			out["connection"] = "failed"
+			out["error"] = openErr.Error()
+			printPreflight(out, args, 1)
+			return
+		}
+		defer c.Close()
+		if pingErr := c.Ping(ctx); pingErr != nil {
+			out["ok"] = false
+			out["connection"] = "failed"
+			out["error"] = pingErr.Error()
+			printPreflight(out, args, 1)
+			return
+		}
+		out["connection"] = "ok"
+	}
+	printPreflight(out, args, 0)
+}
+
+func printPreflight(out map[string]any, args []string, code int) {
+	if hasJSON(args) {
+		printJSON(out)
+	} else {
+		bytes, _ := json.MarshalIndent(out, "", "  ")
+		fmt.Println(string(bytes))
+	}
+	if code != 0 {
+		os.Exit(code)
+	}
+}
+
+func paramsComplete() bool {
+	p := paramsFromEnv()
+	return p.AsHost != "" && p.SysNr != "" && p.Client != "" && p.User != "" && p.Passwd != ""
+}
+
+func hasJSON(args []string) bool {
+	for _, arg := range args {
+		if arg == "--json" || arg == "-json" {
+			return true
+		}
+	}
+	return false
+}
+
+func printJSON(v any) {
+	bytes, _ := json.Marshal(v)
+	fmt.Println(string(bytes))
 }
 
 func paramsFromEnv() nwrfc.Params {

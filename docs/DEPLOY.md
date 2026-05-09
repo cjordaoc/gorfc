@@ -192,6 +192,30 @@ Or programmatically, same as Linux (§2.3). On Windows,
 `EnsureSDK()` is **diagnostic only** — by the time it runs,
 the loader has already succeeded.
 
+### 3.6 Nexus VDI packaging
+
+For Nexus pre-GA VDI deployments, package `nwrfc.exe` next to
+`vdi-node.exe` and keep SAP NW RFC SDK DLLs outside this repository. The
+supported CLI probes are:
+
+```powershell
+.\nwrfc.exe --version
+.\nwrfc.exe health --json
+.\nwrfc.exe preflight --json
+```
+
+`--version` works in no-SDK builds and reports `sdk_version:"no-sdk"`.
+`health` and `preflight` fail explicitly when the binary was built with
+`-tags nwrfc_nosdk` or when SDK DLLs are missing. `preflight` performs a SAP
+ping only when the `GORFC_TEST_*` connection variables are present; otherwise
+it reports `connection:"not_configured"` and remains a packaging check.
+
+The SAP NW RFC SDK is customer-provided. Do not vendor, embed, commit, or
+redistribute `sapnwrfc.dll`, `sapucum.dll`, ICU DLLs, CommonCryptoLib, SDK
+headers, or SAP credentials through this project. The Nexus bootstrapper should
+detect the customer-provided SDK layout and copy approved DLLs into the VDI
+install directory as an operational packaging step.
+
 ## 4. Cross-compile Linux → Windows
 
 ```bash

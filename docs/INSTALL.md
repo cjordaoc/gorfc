@@ -118,6 +118,18 @@ For a sanity check against a real SAP system, see the
 [examples/](../example/) directory and the GORFC_TEST_* environment
 variables in [SECURITY.md](SECURITY.md) §3.
 
+CLI packaging probes:
+
+```bash
+nwrfc --version
+nwrfc health --json
+nwrfc preflight --json
+```
+
+`--version` is safe in SDK-free builds. `health` and `preflight` fail
+explicitly when SAP NW RFC SDK is absent; `preflight` only attempts a SAP ping
+when the documented `GORFC_TEST_*` connection variables are configured.
+
 ## See also
 
 - [BUILD.md](BUILD.md) — deeper notes on cross-compilation, sentinels,
