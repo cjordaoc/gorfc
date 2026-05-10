@@ -224,6 +224,39 @@ headers, or SAP credentials through this project. The Nexus bootstrapper should
 detect the customer-provided SDK layout and copy approved DLLs into the VDI
 install directory as an operational packaging step.
 
+### 3.7 Building the Nexus `nwrfc.exe` on the VDI
+
+If the Windows SDK exists only on the VDI, install Go for Windows, MSYS2
+MINGW64 GCC, and the Microsoft Visual C++ 2015-2022 x64 Redistributable on the
+VDI, then build in place:
+
+```powershell
+$env:PATH = "C:\Program Files\Go\bin;C:\msys64\mingw64\bin;$env:PATH"
+.\scripts\build-windows-sdk.ps1 `
+  -SapNWRFCHome "C:\operator-secure\nwrfcsdk-windows" `
+  -Output "C:\nexus-validation\nwrfc.exe" `
+  -CC "C:\msys64\mingw64\bin\gcc.exe"
+```
+
+Deploy only the produced `nwrfc.exe` plus non-proprietary Nexus artifacts. At
+runtime set `SAPNWRFC_HOME` to the operator-staged SDK path and prepend
+`%SAPNWRFC_HOME%\lib` to the Windows service process `PATH`; do not copy SAP
+DLLs into git, CI artifacts, pull requests, or public logs. A valid deployment
+must pass:
+
+```powershell
+$env:SAPNWRFC_HOME = "C:\operator-secure\nwrfcsdk-windows"
+$env:PATH = "$env:SAPNWRFC_HOME\lib;$env:PATH"
+C:\nexus-validation\nwrfc.exe --version
+C:\nexus-validation\nwrfc.exe health --json
+C:\nexus-validation\nwrfc.exe preflight --json
+```
+
+Run `test-connection --json` only with DEV/Sandbox RFC coordinates supplied
+through transient environment variables or a DPAPI-backed service account. Do
+not place RFC passwords in command-line arguments, config JSON, shell history,
+ledger files, or service logs.
+
 ## 4. Cross-compile Linux → Windows
 
 ```bash

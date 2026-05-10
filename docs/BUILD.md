@@ -19,6 +19,33 @@ The first three rows are mutually exclusive; exactly one backend
 registers per build. The fourth row is pure-Go and compiles in every
 configuration.
 
+## Windows/amd64 SDK build on the target host
+
+When the SAP NW RFC SDK for Windows is available only on the Windows VDI,
+build `nwrfc.exe` directly on that VDI instead of copying the proprietary SDK
+to a Linux build host. The required non-SAP tools are Go for Windows, a
+Windows/amd64 C toolchain such as MSYS2 MINGW64 GCC, and the Microsoft Visual
+C++ 2015-2022 x64 Redistributable required by current SAP NW RFC SDK DLLs.
+
+```powershell
+$env:PATH = "C:\Program Files\Go\bin;C:\msys64\mingw64\bin;$env:PATH"
+.\scripts\build-windows-sdk.ps1 `
+  -SapNWRFCHome "C:\operator-secure\nwrfcsdk-windows" `
+  -Output "C:\nexus-validation\nwrfc.exe" `
+  -CC "C:\msys64\mingw64\bin\gcc.exe"
+```
+
+The script is idempotent: it validates `include\sapnwrfc.h`,
+`lib\sapnwrfc.dll`, and `lib\libsapucum.dll`, sets only process-local cgo
+environment variables, prepends the SDK `lib` directory to the build process
+`PATH`, builds `.\cmd\nwrfc`, and runs `nwrfc.exe preflight --json` unless
+`-SkipPreflight` is supplied. It does not download, copy, commit, or vendor any
+SAP SDK file.
+
+The resulting executable is a real cgo build only when it is produced without
+`-tags nwrfc_nosdk` and `nwrfc.exe health --json` reports `ok:true` with an SDK
+version other than `no-sdk`.
+
 ## Cross-compilation
 
 Cgo cross-compilation needs a cross-toolchain. Two reliable patterns:
