@@ -8,7 +8,8 @@
       "Direction": 1,
       "Length": 12,
       "Decimals": 0,
-      "Optional": false
+      "Optional": false,
+      "TypeDesc": null
     },
     {
       "Name": "ADDRESS",
@@ -20,12 +21,54 @@
       "TypeDesc": {
         "Name": "BAPIADDR3",
         "Fields": [
-          { "Name": "FIRSTNAME", "Type": 0, "Length": 40, "Decimals": 0, "Offset": 0 },
-          { "Name": "LASTNAME", "Type": 0, "Length": 40, "Decimals": 0, "Offset": 40 },
-          { "Name": "FULLNAME", "Type": 0, "Length": 80, "Decimals": 0, "Offset": 80 },
-          { "Name": "E_MAIL", "Type": 0, "Length": 241, "Decimals": 0, "Offset": 160 },
-          { "Name": "TEL1_NUMBR", "Type": 0, "Length": 30, "Decimals": 0, "Offset": 401 },
-          { "Name": "DEPARTMENT", "Type": 0, "Length": 40, "Decimals": 0, "Offset": 431 }
+          {
+            "Name": "FIRSTNAME",
+            "Type": 0,
+            "Length": 40,
+            "Decimals": 0,
+            "Offset": 0,
+            "TypeDesc": null
+          },
+          {
+            "Name": "LASTNAME",
+            "Type": 0,
+            "Length": 40,
+            "Decimals": 0,
+            "Offset": 40,
+            "TypeDesc": null
+          },
+          {
+            "Name": "FULLNAME",
+            "Type": 0,
+            "Length": 80,
+            "Decimals": 0,
+            "Offset": 80,
+            "TypeDesc": null
+          },
+          {
+            "Name": "E_MAIL",
+            "Type": 0,
+            "Length": 241,
+            "Decimals": 0,
+            "Offset": 160,
+            "TypeDesc": null
+          },
+          {
+            "Name": "TEL1_NUMBR",
+            "Type": 0,
+            "Length": 30,
+            "Decimals": 0,
+            "Offset": 401,
+            "TypeDesc": null
+          },
+          {
+            "Name": "DEPARTMENT",
+            "Type": 0,
+            "Length": 40,
+            "Decimals": 0,
+            "Offset": 431,
+            "TypeDesc": null
+          }
         ]
       }
     },
@@ -39,11 +82,46 @@
       "TypeDesc": {
         "Name": "BAPILOGOND",
         "Fields": [
-          { "Name": "GLTGV", "Type": 1, "Length": 8, "Decimals": 0, "Offset": 0 },
-          { "Name": "GLTGB", "Type": 1, "Length": 8, "Decimals": 0, "Offset": 8 },
-          { "Name": "USTYP", "Type": 0, "Length": 1, "Decimals": 0, "Offset": 16 },
-          { "Name": "CLASS", "Type": 0, "Length": 12, "Decimals": 0, "Offset": 17 },
-          { "Name": "ACCNT", "Type": 0, "Length": 12, "Decimals": 0, "Offset": 29 }
+          {
+            "Name": "GLTGV",
+            "Type": 1,
+            "Length": 8,
+            "Decimals": 0,
+            "Offset": 0,
+            "TypeDesc": null
+          },
+          {
+            "Name": "GLTGB",
+            "Type": 1,
+            "Length": 8,
+            "Decimals": 0,
+            "Offset": 8,
+            "TypeDesc": null
+          },
+          {
+            "Name": "USTYP",
+            "Type": 0,
+            "Length": 1,
+            "Decimals": 0,
+            "Offset": 16,
+            "TypeDesc": null
+          },
+          {
+            "Name": "CLASS",
+            "Type": 0,
+            "Length": 12,
+            "Decimals": 0,
+            "Offset": 17,
+            "TypeDesc": null
+          },
+          {
+            "Name": "ACCNT",
+            "Type": 0,
+            "Length": 12,
+            "Decimals": 0,
+            "Offset": 29,
+            "TypeDesc": null
+          }
         ]
       }
     },
@@ -57,11 +135,46 @@
       "TypeDesc": {
         "Name": "BAPIDEFAUL",
         "Fields": [
-          { "Name": "STCOD", "Type": 0, "Length": 20, "Decimals": 0, "Offset": 0 },
-          { "Name": "SPLD", "Type": 0, "Length": 4, "Decimals": 0, "Offset": 20 },
-          { "Name": "SPDB", "Type": 0, "Length": 1, "Decimals": 0, "Offset": 24 },
-          { "Name": "DATFM", "Type": 0, "Length": 1, "Decimals": 0, "Offset": 25 },
-          { "Name": "TIMEFM", "Type": 0, "Length": 1, "Decimals": 0, "Offset": 26 }
+          {
+            "Name": "STCOD",
+            "Type": 0,
+            "Length": 20,
+            "Decimals": 0,
+            "Offset": 0,
+            "TypeDesc": null
+          },
+          {
+            "Name": "SPLD",
+            "Type": 0,
+            "Length": 4,
+            "Decimals": 0,
+            "Offset": 20,
+            "TypeDesc": null
+          },
+          {
+            "Name": "SPDB",
+            "Type": 0,
+            "Length": 1,
+            "Decimals": 0,
+            "Offset": 24,
+            "TypeDesc": null
+          },
+          {
+            "Name": "DATFM",
+            "Type": 0,
+            "Length": 1,
+            "Decimals": 0,
+            "Offset": 25,
+            "TypeDesc": null
+          },
+          {
+            "Name": "TIMEFM",
+            "Type": 0,
+            "Length": 1,
+            "Decimals": 0,
+            "Offset": 26,
+            "TypeDesc": null
+          }
         ]
       }
     },
@@ -75,8 +188,22 @@
       "TypeDesc": {
         "Name": "BAPIPROF",
         "Fields": [
-          { "Name": "BAPIPROF", "Type": 0, "Length": 12, "Decimals": 0, "Offset": 0 },
-          { "Name": "BAPIPTEXT", "Type": 0, "Length": 60, "Decimals": 0, "Offset": 12 }
+          {
+            "Name": "BAPIPROF",
+            "Type": 0,
+            "Length": 12,
+            "Decimals": 0,
+            "Offset": 0,
+            "TypeDesc": null
+          },
+          {
+            "Name": "BAPIPTEXT",
+            "Type": 0,
+            "Length": 60,
+            "Decimals": 0,
+            "Offset": 12,
+            "TypeDesc": null
+          }
         ]
       }
     },
@@ -90,10 +217,38 @@
       "TypeDesc": {
         "Name": "BAPIAGR",
         "Fields": [
-          { "Name": "AGR_NAME", "Type": 0, "Length": 30, "Decimals": 0, "Offset": 0 },
-          { "Name": "FROM_DAT", "Type": 1, "Length": 8, "Decimals": 0, "Offset": 30 },
-          { "Name": "TO_DAT", "Type": 1, "Length": 8, "Decimals": 0, "Offset": 38 },
-          { "Name": "AGR_TEXT", "Type": 0, "Length": 80, "Decimals": 0, "Offset": 46 }
+          {
+            "Name": "AGR_NAME",
+            "Type": 0,
+            "Length": 30,
+            "Decimals": 0,
+            "Offset": 0,
+            "TypeDesc": null
+          },
+          {
+            "Name": "FROM_DAT",
+            "Type": 1,
+            "Length": 8,
+            "Decimals": 0,
+            "Offset": 30,
+            "TypeDesc": null
+          },
+          {
+            "Name": "TO_DAT",
+            "Type": 1,
+            "Length": 8,
+            "Decimals": 0,
+            "Offset": 38,
+            "TypeDesc": null
+          },
+          {
+            "Name": "AGR_TEXT",
+            "Type": 0,
+            "Length": 80,
+            "Decimals": 0,
+            "Offset": 46,
+            "TypeDesc": null
+          }
         ]
       }
     },
@@ -107,8 +262,22 @@
       "TypeDesc": {
         "Name": "BAPIPARAM",
         "Fields": [
-          { "Name": "PARID", "Type": 0, "Length": 20, "Decimals": 0, "Offset": 0 },
-          { "Name": "PARVA", "Type": 0, "Length": 80, "Decimals": 0, "Offset": 20 }
+          {
+            "Name": "PARID",
+            "Type": 0,
+            "Length": 20,
+            "Decimals": 0,
+            "Offset": 0,
+            "TypeDesc": null
+          },
+          {
+            "Name": "PARVA",
+            "Type": 0,
+            "Length": 80,
+            "Decimals": 0,
+            "Offset": 20,
+            "TypeDesc": null
+          }
         ]
       }
     },
@@ -122,20 +291,118 @@
       "TypeDesc": {
         "Name": "BAPIRET2",
         "Fields": [
-          { "Name": "TYPE", "Type": 0, "Length": 1, "Decimals": 0, "Offset": 0 },
-          { "Name": "ID", "Type": 0, "Length": 20, "Decimals": 0, "Offset": 1 },
-          { "Name": "NUMBER", "Type": 6, "Length": 3, "Decimals": 0, "Offset": 21 },
-          { "Name": "MESSAGE", "Type": 0, "Length": 220, "Decimals": 0, "Offset": 24 },
-          { "Name": "LOG_NO", "Type": 0, "Length": 20, "Decimals": 0, "Offset": 244 },
-          { "Name": "LOG_MSG_NO", "Type": 6, "Length": 6, "Decimals": 0, "Offset": 264 },
-          { "Name": "MESSAGE_V1", "Type": 0, "Length": 50, "Decimals": 0, "Offset": 270 },
-          { "Name": "MESSAGE_V2", "Type": 0, "Length": 50, "Decimals": 0, "Offset": 320 },
-          { "Name": "MESSAGE_V3", "Type": 0, "Length": 50, "Decimals": 0, "Offset": 370 },
-          { "Name": "MESSAGE_V4", "Type": 0, "Length": 50, "Decimals": 0, "Offset": 420 },
-          { "Name": "PARAMETER", "Type": 0, "Length": 32, "Decimals": 0, "Offset": 470 },
-          { "Name": "ROW", "Type": 8, "Length": 4, "Decimals": 0, "Offset": 502 },
-          { "Name": "FIELD", "Type": 0, "Length": 30, "Decimals": 0, "Offset": 506 },
-          { "Name": "SYSTEM", "Type": 0, "Length": 10, "Decimals": 0, "Offset": 536 }
+          {
+            "Name": "TYPE",
+            "Type": 0,
+            "Length": 1,
+            "Decimals": 0,
+            "Offset": 0,
+            "TypeDesc": null
+          },
+          {
+            "Name": "ID",
+            "Type": 0,
+            "Length": 20,
+            "Decimals": 0,
+            "Offset": 1,
+            "TypeDesc": null
+          },
+          {
+            "Name": "NUMBER",
+            "Type": 6,
+            "Length": 3,
+            "Decimals": 0,
+            "Offset": 21,
+            "TypeDesc": null
+          },
+          {
+            "Name": "MESSAGE",
+            "Type": 0,
+            "Length": 220,
+            "Decimals": 0,
+            "Offset": 24,
+            "TypeDesc": null
+          },
+          {
+            "Name": "LOG_NO",
+            "Type": 0,
+            "Length": 20,
+            "Decimals": 0,
+            "Offset": 244,
+            "TypeDesc": null
+          },
+          {
+            "Name": "LOG_MSG_NO",
+            "Type": 6,
+            "Length": 6,
+            "Decimals": 0,
+            "Offset": 264,
+            "TypeDesc": null
+          },
+          {
+            "Name": "MESSAGE_V1",
+            "Type": 0,
+            "Length": 50,
+            "Decimals": 0,
+            "Offset": 270,
+            "TypeDesc": null
+          },
+          {
+            "Name": "MESSAGE_V2",
+            "Type": 0,
+            "Length": 50,
+            "Decimals": 0,
+            "Offset": 320,
+            "TypeDesc": null
+          },
+          {
+            "Name": "MESSAGE_V3",
+            "Type": 0,
+            "Length": 50,
+            "Decimals": 0,
+            "Offset": 370,
+            "TypeDesc": null
+          },
+          {
+            "Name": "MESSAGE_V4",
+            "Type": 0,
+            "Length": 50,
+            "Decimals": 0,
+            "Offset": 420,
+            "TypeDesc": null
+          },
+          {
+            "Name": "PARAMETER",
+            "Type": 0,
+            "Length": 32,
+            "Decimals": 0,
+            "Offset": 470,
+            "TypeDesc": null
+          },
+          {
+            "Name": "ROW",
+            "Type": 8,
+            "Length": 4,
+            "Decimals": 0,
+            "Offset": 502,
+            "TypeDesc": null
+          },
+          {
+            "Name": "FIELD",
+            "Type": 0,
+            "Length": 30,
+            "Decimals": 0,
+            "Offset": 506,
+            "TypeDesc": null
+          },
+          {
+            "Name": "SYSTEM",
+            "Type": 0,
+            "Length": 10,
+            "Decimals": 0,
+            "Offset": 536,
+            "TypeDesc": null
+          }
         ]
       }
     }

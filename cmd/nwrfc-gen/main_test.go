@@ -5,9 +5,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -15,6 +17,91 @@ import (
 	"github.com/cjordaoc/gorfc/nwrfc"
 	"github.com/cjordaoc/gorfc/nwrfcmock"
 )
+
+// sourceNoteTestDescriptor is a STRUCTURE-bearing descriptor used by
+// the SourceNote / round-trip tests below.
+func sourceNoteTestDescriptor() backend.FunctionDescriptor {
+	return backend.FunctionDescriptor{
+		Name: "BAPI_USER_GET_DETAIL",
+		Parameters: []backend.ParameterDescriptor{
+			{Name: "USERNAME", Type: backend.TypeChar, Direction: backend.DirImport, Length: 12},
+			{
+				Name:      "RETURN",
+				Type:      backend.TypeStructure,
+				Direction: backend.DirExport,
+				Optional:  true,
+				TypeDesc: &backend.TypeDescriptor{
+					Name: "BAPIRET2",
+					Fields: []backend.FieldDescriptor{
+						{Name: "TYPE", Type: backend.TypeChar, Length: 1, Offset: 0},
+						{Name: "MESSAGE", Type: backend.TypeChar, Length: 220, Offset: 1},
+					},
+				},
+			},
+		},
+	}
+}
+
+func TestWriteDescriptorJSONEmitsSourceNote(t *testing.T) {
+	desc := sourceNoteTestDescriptor()
+	path := filepath.Join(t.TempDir(), "descriptor.json")
+	if err := writeDescriptorJSON(path, desc); err != nil {
+		t.Fatalf("writeDescriptorJSON: %v", err)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	var env descriptorEnvelope
+	if err := json.Unmarshal(b, &env); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if env.SourceNote == "" {
+		t.Fatalf("SourceNote is empty\n%s", b)
+	}
+	if !strings.Contains(env.SourceNote, desc.Name) {
+		t.Fatalf("SourceNote %q does not mention %q", env.SourceNote, desc.Name)
+	}
+}
+
+func TestWriteDescriptorJSONIsDeterministic(t *testing.T) {
+	desc := sourceNoteTestDescriptor()
+	dir := t.TempDir()
+	p1 := filepath.Join(dir, "a.json")
+	p2 := filepath.Join(dir, "b.json")
+	if err := writeDescriptorJSON(p1, desc); err != nil {
+		t.Fatalf("writeDescriptorJSON p1: %v", err)
+	}
+	if err := writeDescriptorJSON(p2, desc); err != nil {
+		t.Fatalf("writeDescriptorJSON p2: %v", err)
+	}
+	b1, err := os.ReadFile(p1)
+	if err != nil {
+		t.Fatalf("read p1: %v", err)
+	}
+	b2, err := os.ReadFile(p2)
+	if err != nil {
+		t.Fatalf("read p2: %v", err)
+	}
+	if string(b1) != string(b2) {
+		t.Fatalf("output not deterministic:\n%s\n---\n%s", b1, b2)
+	}
+}
+
+func TestDescriptorJSONRoundTrips(t *testing.T) {
+	desc := sourceNoteTestDescriptor()
+	path := filepath.Join(t.TempDir(), "descriptor.json")
+	if err := writeDescriptorJSON(path, desc); err != nil {
+		t.Fatalf("writeDescriptorJSON: %v", err)
+	}
+	got, err := loadDescriptor(path, "", 0)
+	if err != nil {
+		t.Fatalf("loadDescriptor: %v", err)
+	}
+	if !reflect.DeepEqual(got, desc) {
+		t.Fatalf("round-trip mismatch:\ngot  %+v\nwant %+v", got, desc)
+	}
+}
 
 func TestGenerateSeparatesChangingParams(t *testing.T) {
 	files, err := generate("stfc", backend.FunctionDescriptor{
@@ -151,8 +238,10 @@ func scalarBenchDescriptor() backend.FunctionDescriptor {
 }
 
 // TestGenerateFast_EmitsNoReflect verifies that --fast output
-// carries no "reflect" import: the whole point of the fast path
-// is that marshal/unmarshal are reflection-free.
+// carries no "reflect" import — the whole point of the fast path
+// is that marshal/unmarshal are reflection-free — and that it
+// never names internal/backend, so it stays importable from an
+// external consumer module.
 func TestGenerateFast_EmitsNoReflect(t *testing.T) {
 	files, err := generate("benchfast", scalarBenchDescriptor(), true)
 	if err != nil {
@@ -162,9 +251,12 @@ func TestGenerateFast_EmitsNoReflect(t *testing.T) {
 	if strings.Contains(src, `"reflect"`) {
 		t.Fatalf("--fast source imports reflect:\n%s", src)
 	}
+	if strings.Contains(src, "internal/backend") {
+		t.Fatalf("--fast source depends on internal/backend:\n%s", src)
+	}
 	for _, want := range []string{
-		"func marshalIn(in In) backend.CallParams",
-		"func unmarshalOut(raw backend.CallParams, out *Out)",
+		"func marshalIn(in In) map[string]any",
+		"func unmarshalOut(raw map[string]any, out *Out)",
 		"func CallFast(ctx context.Context, conn *nwrfc.Conn, in In) (Out, error)",
 		"nwrfc.CallMap(ctx, conn,",
 	} {
@@ -175,33 +267,51 @@ func TestGenerateFast_EmitsNoReflect(t *testing.T) {
 }
 
 // TestGenerateFast_Compiles generates --fast code, writes it into
-// a temp package inside the module (so the generated internal
-// import resolves), and verifies it compiles with `go build`.
+// a standalone module *outside* the gorfc module tree, and
+// verifies it compiles and its SDK-free test runs. Building from
+// an external module is what proves the generated code does not
+// depend on internal/backend: an internal import would fail to
+// resolve here, whereas compiling inside the module tree would
+// silently mask that drift.
 func TestGenerateFast_Compiles(t *testing.T) {
+	repoRoot, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatalf("repo root: %v", err)
+	}
 	files, err := generate("benchfast", scalarBenchDescriptor(), true)
 	if err != nil {
 		t.Fatalf("generate --fast: %v", err)
 	}
-	// The temp dir must live inside the module tree: the
-	// generated code imports github.com/cjordaoc/gorfc/internal/
-	// backend, which Go only lets packages under the same module
-	// root import.
-	tmpDir, err := os.MkdirTemp(".", "fastgentest")
-	if err != nil {
-		t.Fatalf("mkdtemp: %v", err)
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module generated.fast.test\n\ngo 1.23\n\nrequire github.com/cjordaoc/gorfc v0.0.0\n\nreplace github.com/cjordaoc/gorfc => "+repoRoot+"\n"), 0o644); err != nil {
+		t.Fatalf("write go.mod: %v", err)
 	}
-	t.Cleanup(func() { _ = os.RemoveAll(tmpDir) })
-	if err := os.WriteFile(filepath.Join(tmpDir, "generated.go"), files.Source, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "generated.go"), files.Source, 0o644); err != nil {
 		t.Fatalf("write source: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(tmpDir, "generated_test.go"), files.Test, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "generated_test.go"), files.Test, 0o644); err != nil {
 		t.Fatalf("write test: %v", err)
 	}
 
-	cmd := exec.Command("go", "build", "-tags", "nwrfc_nosdk", "./"+filepath.Base(tmpDir))
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("go build of --fast output failed: %v\n%s", err, string(out))
+	// Resolve the generated module's transitive dependency graph;
+	// the bare go.mod above only names github.com/cjordaoc/gorfc.
+	tidy := exec.Command("go", "mod", "tidy")
+	tidy.Dir = dir
+	if out, err := tidy.CombinedOutput(); err != nil {
+		t.Fatalf("go mod tidy in generated module failed: %v\n%s", err, string(out))
+	}
+
+	cmd := exec.Command("go", "test", "-tags", "nwrfc_nosdk", "./...")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("go test of --fast output failed: %v\n%s", err, string(out))
+	}
+
+	cmd = exec.Command("go", "vet", "-tags", "nwrfc_nosdk", "./...")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("go vet of --fast output failed: %v\n%s", err, string(out))
 	}
 }
 
@@ -230,10 +340,12 @@ type benchOut struct {
 
 // marshalBenchIn / unmarshalBenchOut mirror, by hand, exactly the
 // reflection-free code that `nwrfc-gen --fast` emits for benchIn /
-// benchOut. Keeping the mirror here lets the benchmark compare
-// the two code paths without a codegen+compile step on every run.
-func marshalBenchIn(in benchIn) backend.CallParams {
-	raw := make(backend.CallParams, 5)
+// benchOut — including the plain map[string]any signatures, which
+// is what keeps the generated output free of internal/backend.
+// Keeping the mirror here lets the benchmark compare the two code
+// paths without a codegen+compile step on every run.
+func marshalBenchIn(in benchIn) map[string]any {
+	raw := make(map[string]any, 5)
 	raw["REQ_TEXT"] = in.ReqText
 	raw["REQ_COUNT"] = in.ReqCount
 	raw["REQ_FLAG"] = in.ReqFlag
@@ -242,7 +354,7 @@ func marshalBenchIn(in benchIn) backend.CallParams {
 	return raw
 }
 
-func unmarshalBenchOut(raw backend.CallParams, out *benchOut) {
+func unmarshalBenchOut(raw map[string]any, out *benchOut) {
 	if v, ok := raw["RESP_TEXT"]; ok {
 		if tv, ok := v.(string); ok {
 			out.RespText = tv
