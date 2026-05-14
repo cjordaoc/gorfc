@@ -44,6 +44,27 @@ invoking — the script never reads from arbitrary names:
 | `GORFC_TEST_CLIENT` | mandant | `100` |
 | `GORFC_TEST_LANG` | logon language (defaults to `EN`) | `PT` |
 
+## The `internal/sdktest` probe package
+
+`internal/sdktest` is **not** part of the integration suite above and is
+not part of the production binding. It is an opt-in SDK probe/validation
+package that exercises the SAP NetWeaver RFC SDK directly through cgo.
+
+Its files carry the build constraint
+`gorfc_sdktest && cgo && !nwrfc_nosdk`, so they do **not** compile in the
+default workspace — not even when cgo is active. This is deliberate: a
+contributor opening the workspace in an IDE with cgo on but without the
+SAP NWRFC SDK configured would otherwise hit cascade errors from
+`sapnwrfc.h`.
+
+To build or test it you must, in addition to having the SDK configured
+(`SAPNWRFC_HOME`, `CGO_CFLAGS`, `CGO_LDFLAGS`), pass the `gorfc_sdktest`
+build tag explicitly:
+
+```bash
+go test -tags gorfc_sdktest ./internal/sdktest
+```
+
 ## Windows VDI playbook
 
 The repo ships a PowerShell script that automates every step

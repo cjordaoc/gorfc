@@ -6,6 +6,11 @@
 > baseline (Apache-2.0), preserved for reference and migration.
 >
 > Active redesign: see [docs/PLAN.md](docs/PLAN.md).
+>
+> **Opening this repo in an IDE?** Without the SAP NWRFC SDK configured,
+> gopls floods the editor with `sapnwrfc.h: No such file or directory`
+> errors. Point your editor at the SDK-free build tag — see
+> [docs/BUILD.md § IDE and gopls workspace (SDK-free mode)](docs/BUILD.md#ide-and-gopls-workspace-sdk-free-mode).
 
 ## What this project is
 
@@ -91,6 +96,7 @@ sharing one connection across goroutines.
 | [docs/PROJECT_OBJECTIVE.md](docs/PROJECT_OBJECTIVE.md) | Scope, success criteria, license boundary |
 | [docs/GORFC_REVIVAL_ASSESSMENT.md](docs/GORFC_REVIVAL_ASSESSMENT.md) | Strengths and gaps in upstream code |
 | [docs/PORTING_STRATEGY.md](docs/PORTING_STRATEGY.md) | Tier-based porting strategy |
+| [docs/BUILD.md](docs/BUILD.md) | Build notes — including IDE / gopls workspace setup for SDK-free mode |
 | [AGENTS.md](AGENTS.md) | Engineering rules for AI assistants and humans |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Ground rules, security expectations |
 | [doc/README.md](doc/README.md) | Legacy ABAP-to-Go type mapping reference |

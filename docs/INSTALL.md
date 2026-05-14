@@ -85,6 +85,12 @@ or Lima as the fallback build environment.
 | SDK-free | `-tags nwrfc_nosdk` | No-SDK stub backend. Every operation returns `*nwrfc.SDKUnavailableError`. Useful for downstream packages that re-export `nwrfc` types but don't connect to SAP. |
 | No cgo | `CGO_ENABLED=0` | Same as `-tags nwrfc_nosdk`; the no-SDK stub is the only valid choice when cgo is off. |
 
+> **Opening the workspace in an IDE without the SDK?** gopls compiles
+> the cgo packages by default and floods the editor with
+> `sapnwrfc.h: No such file or directory` errors. Configure your editor
+> to build with `-tags nwrfc_nosdk` — see
+> [BUILD.md § IDE and gopls workspace (SDK-free mode)](BUILD.md#ide-and-gopls-workspace-sdk-free-mode).
+
 ```bash
 # Build a binary that compiles in any CI but errors at runtime
 # if anyone tries to actually connect.

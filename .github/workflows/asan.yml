@@ -69,7 +69,7 @@ jobs:
       - name: Run SDK-only ASan tests
         shell: bash
         run: |
-          go test -asan ./internal/sdktest
+          go test -asan -tags gorfc_sdktest ./internal/sdktest
           go test -asan ./nwrfc -run '^(TestSDK|TestCapabilities|TestLanguage|TestSetTrace|TestNewTID|TestNewUnitID|TestUnitState|TestNewQueuedTransaction)'
 
       - name: Run live SAP marshaling ASan test

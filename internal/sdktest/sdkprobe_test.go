@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 gorfc community contributors
 // SPDX-License-Identifier: Apache-2.0
 
-//go:build cgo && !nwrfc_nosdk
+//go:build gorfc_sdktest && cgo && !nwrfc_nosdk
 
 // Pure-Go test file (no `import "C"`) that drives the cgo
 // probes from sdkprobe.go. See the package doc comment for

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 gorfc community contributors
 // SPDX-License-Identifier: Apache-2.0
 
-//go:build cgo && !nwrfc_nosdk
+//go:build gorfc_sdktest && cgo && !nwrfc_nosdk
 
 // Package sdktest hosts cgo-using behavior tests that exercise
 // the SAP NetWeaver RFC SDK directly, independent of any

@@ -186,8 +186,8 @@ github.com/cjordaoc/gorfc                    ← module root
 
 **Linkagem do backend:**
 
-- Build tag `nwrfc_sdk` (default em CGO ambientes) → registra `sdkbackend`.
-- Build tag `nwrfc_nosdk` (ou `!cgo`) → registra `nosdkbackend`.
+- Constraint `cgo && !nwrfc_nosdk` (default em ambientes CGO, sem tag explícita) → registra `sdkbackend`.
+- Constraint `!cgo || nwrfc_nosdk` (tag `nwrfc_nosdk` ou `CGO_ENABLED=0`) → registra `nosdkbackend`.
 - `nwrfcmock.Register(t, mock)` registra mock em runtime, sobrepondo o default — útil em tests.
 
 **Contrato `Backend` (esboço, não código final):**
@@ -1215,7 +1215,7 @@ Localizadas em pacotes que não importam `internal/sdkbackend`:
 
 Critério: 90%+ coverage em `nwrfc/`, 100% em `internal/secrets`, `internal/timeext`, `internal/ucs2`.
 
-### 9.2 SDK-present local tests (rodam quando `SAPNWRFC_HOME` definido; gated build tag `nwrfc_sdk`)
+### 9.2 SDK-present local tests (rodam quando `SAPNWRFC_HOME` definido; build default `cgo && !nwrfc_nosdk`, sem a tag `nwrfc_nosdk`)
 
 - `EnsureLibraryPresent` localiza `libsapnwrfc.so`/`.dll` em `SAPNWRFC_HOME/lib`, retorna versão.
 - `RfcGetVersion` retorna major/minor/patch coerente.
@@ -1272,7 +1272,7 @@ Critério: 90%+ coverage em `nwrfc/`, 100% em `internal/secrets`, `internal/time
 **Nightly SDK-present (~15min):**
 
 - runner com `SAPNWRFC_HOME` cached como GitHub Actions artifact (manualmente uploaded por mantenedor; nunca commitado)
-- `go test -tags=nwrfc_sdk ./...` (não chega no SAP)
+- `go test ./...` (build default cgo, sem `-tags nwrfc_nosdk`; não chega no SAP)
 
 **Nightly integration (~30min):**
 
@@ -1470,7 +1470,7 @@ PRs pequenos, mergeáveis isoladamente, com rollback claro.
 | **T0.2** | fix: build tag windows guard | Build tag correto | gorfc/gorfc.go:1 | tag rewrite | go vet | build linux+darwin OK; windows compila com cuidado ou requires CGO | baixo | revert |
 | **T0.3** | fix: cgo memory leak in fillVariable | corrige `defer C.free` | gorfc/gorfc.go | refactor switch | leak test (criação repetida) | leak ausente em 1k iterações | médio | revert |
 | **T0.4** | docs: feasibility, sdk_functions_map, feature_matrix, roadmap | docs core do plano | docs/* | escrita | linkcheck | revisores aprovam | nenhum | revert |
-| **T1.1** | refactor: introduce internal/backend interface | Cria contrato | internal/backend/, internal/sdkbackend/ skeleton, internal/nosdkbackend/ | shell de Backend interface; sdkbackend só compila com cgo+nwrfc_sdk; nosdk stub | unit: registry choice | go build sem SDK funciona; com SDK funciona | médio | revert sem afetar gorfc/ legado |
+| **T1.1** | refactor: introduce internal/backend interface | Cria contrato | internal/backend/, internal/sdkbackend/ skeleton, internal/nosdkbackend/ | shell de Backend interface; sdkbackend só compila com `cgo && !nwrfc_nosdk`; nosdk stub | unit: registry choice | go build sem SDK funciona; com SDK funciona | médio | revert sem afetar gorfc/ legado |
 | **T1.2** | feat: nwrfc package skeleton + Conn lifecycle | API surface mínima | nwrfc/ | Conn, Params, Open, Close, Ping; sem Call ainda | mock backend tests | mock acquires Conn; close idempotente | médio | revert sem afetar legado |
 | **T1.3** | feat: typed errors hierarchy | §7 | nwrfc/errors.go, internal/sdkbackend/errors.go | erros + group→tipo + Is/As + redaction LogValue | unit + redaction tests | errors.Is(err, ErrLogon) funciona | baixo | revert |
 | **T1.4** | feat: ucs2 + bcd + timeext util packages | tipos ABAP base | internal/ucs2/, internal/bcd/, internal/timeext/ | Date, Time, UTCLong, validators, parsers | fuzz round-trip | 100% cov, fuzz passes | baixo | revert |

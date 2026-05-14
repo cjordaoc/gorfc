@@ -154,6 +154,30 @@ constraint is `(linux || darwin || windows) && cgo`. If you
 were silently building on an unsupported GOOS, it now fails
 fast with `build constraints exclude all Go files`.
 
+### Hardcoded SDK paths removed
+
+Upstream's `gorfc/gorfc.go` carried hardcoded `#cgo` directives
+with absolute SDK paths (`-IC:/Tools/nwrfcsdk/include/`,
+`-I/usr/local/sap/nwrfcsdk/include`, matching `-L...` LDFLAGS,
+and a darwin `-Wl,-rpath,...`). Those have been removed.
+
+The legacy `gorfc/` package no longer hardcodes any SDK path and
+now requires the **same** `CGO_CFLAGS` / `CGO_LDFLAGS` setup as
+the modern `internal/sdkbackend` backend — only the
+path-independent compile-time defines and the `-lsapnwrfc` /
+`-lsapucum` library names remain in the source. Set, for
+example:
+
+```sh
+export CGO_CFLAGS="-I$SAPNWRFC_HOME/include"
+export CGO_LDFLAGS="-L$SAPNWRFC_HOME/lib -Wl,-rpath,$SAPNWRFC_HOME/lib"
+```
+
+See [docs/INSTALL.md](INSTALL.md) for the portable build pattern.
+Builds without these env vars set fail explicitly at the cgo
+header step (`fatal error: sapnwrfc.h: No such file or
+directory`).
+
 ### `nwrfc_nosdk` build tag
 
 The revival adds a no-SDK build mode (`-tags nwrfc_nosdk`) that

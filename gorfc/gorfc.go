@@ -12,6 +12,21 @@
 // disabled, the build fails explicitly — there is no silent stub
 // behavior in this package (see AGENTS.md "Non-Negotiables").
 //
+// Build requirements: this package requires CGO_CFLAGS and CGO_LDFLAGS
+// to be set by the user, pointing respectively at the SDK include and
+// lib directories of their SAP NetWeaver RFC SDK installation, e.g.:
+//
+//	export CGO_CFLAGS="-I$SAPNWRFC_HOME/include"
+//	export CGO_LDFLAGS="-L$SAPNWRFC_HOME/lib -Wl,-rpath,$SAPNWRFC_HOME/lib"
+//
+// The previously hardcoded SDK paths (the -I<path> CFLAGS and
+// -L<path> LDFLAGS directives below) have been removed; only the
+// path-independent compile-time defines and the -lsapnwrfc /
+// -lsapucum library names remain. See docs/INSTALL.md for the
+// portable build pattern. This is consistent with the modern
+// internal/sdkbackend approach, which also relies on
+// CGO_CFLAGS / CGO_LDFLAGS rather than hardcoded paths.
+//
 // The previous build constraint here was
 // `(linux && cgo) || (amd64 && cgo) || (darwin && cgo)`, which let
 // the package match on any amd64 GOOS (FreeBSD, OpenBSD, ...) where
@@ -40,8 +55,7 @@ package gorfc
 // todo MD ? -lpthread -lm
 // todo -nologo -W3 -Z7  -GL -O2 -Oy- /we4552 /we4700 /we4789
 
-#cgo windows CFLAGS: -IC:/Tools/nwrfcsdk/include/
-#cgo windows LDFLAGS: -LC:/Tools/nwrfcsdk/lib/ -lsapnwrfc -llibsapucum
+#cgo windows LDFLAGS: -lsapnwrfc -llibsapucum
 
 #cgo windows LDFLAGS: -O2 -g -pthread -pie -fPIE
 #cgo windows LDFLAGS: -OPT:REF -LTCG
@@ -57,8 +71,7 @@ package gorfc
 #cgo linux CFLAGS: -Wall -Wno-uninitialized -Wno-long-long
 #cgo linux CFLAGS: -Wcast-align -Wno-unused-variable
 
-#cgo linux CFLAGS: -I/usr/local/sap/nwrfcsdk/include
-#cgo linux LDFLAGS: -L/usr/local/sap/nwrfcsdk/lib -lsapnwrfc -lsapucum
+#cgo linux LDFLAGS: -lsapnwrfc -lsapucum
 
 #cgo linux LDFLAGS: -O2 -g -pthread
 
@@ -69,9 +82,7 @@ package gorfc
 #cgo darwin CFLAGS: -fexceptions -funsigned-char -fno-strict-aliasing -fPIC -pthread -std=c17 -mmacosx-version-min=10.15
 #cgo darwin CFLAGS: -fno-omit-frame-pointer
 
-#cgo darwin CFLAGS: -I/usr/local/sap/nwrfcsdk/include
-#cgo darwin LDFLAGS: -L/usr/local/sap/nwrfcsdk/lib -lsapnwrfc -lsapucum
-#cgo darwin LDFLAGS: -Wl,-rpath,/usr/local/sap/nwrfcsdk/lib
+#cgo darwin LDFLAGS: -lsapnwrfc -lsapucum
 
 #cgo darwin LDFLAGS: -O2 -g -pthread
 #cgo darwin LDFLAGS: -stdlib=libc++

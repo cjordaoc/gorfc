@@ -11,13 +11,84 @@ Detailed build advice for `gorfc` users. Quick install lives in
 | Constraint | Files affected |
 |---|---|
 | `cgo && !nwrfc_nosdk` | `internal/sdkbackend/*.go`, `nwrfc/register_sdk.go` |
+| `gorfc_sdktest && cgo && !nwrfc_nosdk` | `internal/sdktest/*.go` (SDK probe package, opt-in) |
 | `!cgo || nwrfc_nosdk` | `internal/nosdkbackend/*.go`, `nwrfc/register_nosdk.go` |
 | `(linux || darwin || windows) && cgo && !nwrfc_nosdk` | `gorfc/*.go` (legacy upstream package), `example/hello_gorfc.go` |
 | (none) | `nwrfc/*.go` (except register_*.go), `internal/backend/*.go`, `internal/ucs2/*.go`, `internal/bcd/*.go`, `internal/timeext/*.go` |
 
-The first three rows are mutually exclusive; exactly one backend
-registers per build. The fourth row is pure-Go and compiles in every
-configuration.
+The `cgo && !nwrfc_nosdk` and `!cgo || nwrfc_nosdk` rows are mutually
+exclusive; exactly one backend registers per build. The last row is
+pure-Go and compiles in every configuration. The
+`gorfc_sdktest` row is an opt-in probe/validation package — it is not
+part of the production binding and only compiles when the
+`gorfc_sdktest` build tag is passed explicitly (see the AddressSanitizer
+SDK lane below).
+
+## IDE and gopls workspace (SDK-free mode)
+
+**The problem.** `gopls` (and `go list` / `go build` underneath it)
+compiles the cgo packages by default. When a contributor opens this
+workspace in VS Code or any gopls-based IDE without the SAP NWRFC SDK
+installed and `CGO_CFLAGS`/`CGO_LDFLAGS` configured, the LSP tries to
+build `internal/sdkbackend/*.go` and `gorfc/*.go` and produces hundreds
+of cascade errors rooted in `sapnwrfc.h: No such file or directory`.
+
+**The solution.** Tell gopls to build with `-tags nwrfc_nosdk`. That
+selects the no-SDK stub backend, which is pure-Go and compiles with no
+SDK headers or libraries present. This is an IDE/editor setting only —
+it does not change the default build model for `go build` or CI.
+
+**VS Code** — commit or create `.vscode/settings.json`:
+
+```json
+{
+  "go.buildFlags": ["-tags", "nwrfc_nosdk"],
+  "gopls": {
+    "build.buildFlags": ["-tags", "nwrfc_nosdk"]
+  }
+}
+```
+
+**GoLand / IntelliJ** — Settings → Go → Build Tags & Vendoring →
+**Custom tags**: `nwrfc_nosdk`.
+
+**CLI / other editors** — export the flag for the gopls process, or
+pass it directly to go commands:
+
+```bash
+GOFLAGS="-tags=nwrfc_nosdk" gopls
+go test -tags nwrfc_nosdk ./...
+```
+
+**What this mode does.** It links the no-SDK stub backend
+(`internal/nosdkbackend`). Every RFC operation returns a
+`*nwrfc.SDKUnavailableError` at runtime. It lets the workspace compile,
+`go test ./...` pass, and gopls resolve types and references without the
+SDK.
+
+**What this mode does NOT do.** It does not validate SDK behavior, cgo
+memory handling, or live SAP calls. The cgo backend in
+`internal/sdkbackend` is never compiled under this tag, so nothing in
+that path — including header bindings and `RfcOpen*`/`Rfc*` wrappers —
+is type-checked or exercised. SDK-backed verification still requires the
+SDK-backed build.
+
+**Switching back to SDK-backed mode.** Remove the `nwrfc_nosdk` build
+flag from your IDE/gopls settings (and unset `GOFLAGS` if you set it
+there), then configure `CGO_CFLAGS` and `CGO_LDFLAGS` to point at the
+SAP NWRFC SDK as described in [INSTALL.md](INSTALL.md). The default
+build (no tag) selects the cgo SDK backend.
+
+**Caveat — `internal/sdktest` and `gorfc/`.** The `nwrfc_nosdk` tag does
+**not** make the whole repository SDK-free. `internal/sdktest` is an
+opt-in SDK probe package constrained to
+`gorfc_sdktest && cgo && !nwrfc_nosdk`, and the legacy upstream `gorfc/`
+package is constrained to
+`(linux || darwin || windows) && cgo && !nwrfc_nosdk` — both still
+require the SDK to compile when their tags are active, regardless of this
+flag. They are separate concerns: scope your IDE to the modern `nwrfc/`
+packages, or expect those two to stay un-buildable until the SDK is
+configured.
 
 ## Connection-open timeout
 
@@ -233,10 +304,16 @@ export GORFC_TEST_CLIENT="100"
 export GORFC_TEST_LANG="EN"
 
 test "$GORFC_TEST_ASAN" = "1"
-go test -asan ./internal/sdktest
+go test -asan -tags gorfc_sdktest ./internal/sdktest
 go test -asan ./nwrfc -run '^(TestSDK|TestCapabilities|TestLanguage|TestSetTrace|TestNewTID|TestNewUnitID|TestUnitState|TestNewQueuedTransaction)'
 go test -asan ./nwrfc -count=1 -run '^TestASAN_STFCStructure_MarshalingRoundTrip$'
 ```
+
+`internal/sdktest` is an opt-in SDK probe package: its files carry the
+`gorfc_sdktest && cgo && !nwrfc_nosdk` build constraint, so it does not
+compile in the default workspace (even with cgo active) and will not
+cause cascade errors from `sapnwrfc.h` in an IDE that has cgo on but no
+SDK configured. You must pass `-tags gorfc_sdktest` to build or test it.
 
 The ASan lane is meant to catch C-memory mistakes in paths that allocate
 through SDK/cgo helpers, including SAP_UC encode/decode probes in
