@@ -19,6 +19,11 @@
 //	# Offline: read a saved descriptor JSON, generate.
 //	nwrfc-gen --json bapi_user_get_detail.json --pkg bapiuser
 //
+//	# Emit the function descriptor JSON (with SourceNote)
+//	# instead of generating code. The output round-trips
+//	# back through --json.
+//	nwrfc-gen --fn BAPI_USER_GET_DETAIL --describe
+//
 // The generated package exposes a typed In / Out struct pair
 // per function, plus a Call helper that routes through
 // nwrfc.Call. No runtime overhead beyond the marshaling layer
@@ -46,17 +51,16 @@ func main() {
 	jsonPath := flag.String("json", "", "descriptor JSON path (offline mode)")
 	pkgName := flag.String("pkg", "rfcclient", "Go package name")
 	outPath := flag.String("out", "", "output file path; default stdout")
+	describeMode := flag.Bool("describe", false, "emit the function descriptor JSON instead of generating code")
 	flag.Parse()
 
 	var desc backend.FunctionDescriptor
 	switch {
 	case *jsonPath != "":
-		b, err := os.ReadFile(*jsonPath)
+		var err error
+		desc, err = loadDescriptor(*jsonPath)
 		if err != nil {
-			fail("read %s: %v", *jsonPath, err)
-		}
-		if err := json.Unmarshal(b, &desc); err != nil {
-			fail("parse %s: %v", *jsonPath, err)
+			fail("%v", err)
 		}
 	case *fnName != "":
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -75,9 +79,18 @@ func main() {
 		fail("--fn or --json required")
 	}
 
-	src, err := generate(*pkgName, desc)
-	if err != nil {
-		fail("generate: %v", err)
+	var src []byte
+	var err error
+	if *describeMode {
+		src, err = writeDescriptorJSON(desc)
+		if err != nil {
+			fail("describe: %v", err)
+		}
+	} else {
+		src, err = generate(*pkgName, desc)
+		if err != nil {
+			fail("generate: %v", err)
+		}
 	}
 	if *outPath == "" {
 		os.Stdout.Write(src)
@@ -86,6 +99,58 @@ func main() {
 	if err := os.WriteFile(*outPath, src, 0o644); err != nil {
 		fail("write %s: %v", *outPath, err)
 	}
+}
+
+// descriptorEnvelope wraps a [backend.FunctionDescriptor] with a
+// SourceNote metadata field. It is the JSON shape emitted by
+// "nwrfc-gen --describe" and matches the reference descriptors
+// committed under descriptors/. The embedded descriptor's fields
+// are promoted to the top level, so the envelope round-trips
+// through loadDescriptor: a plain backend.FunctionDescriptor
+// simply ignores the extra SourceNote key on unmarshal.
+type descriptorEnvelope struct {
+	SourceNote string `json:"SourceNote,omitempty"`
+	backend.FunctionDescriptor
+}
+
+// sourceNote builds the stable, reproducible provenance string
+// embedded in emitted descriptors. The text is deterministic for
+// a given function name so regenerated descriptors stay
+// byte-identical.
+func sourceNote(fn string) string {
+	return fmt.Sprintf("Reference descriptor for nexus-spec migration. "+
+		"Regenerate with `nwrfc-gen describe --fn %s` against the target SAP system "+
+		"before producing customer-specific generated code.", fn)
+}
+
+// writeDescriptorJSON serializes desc as a descriptorEnvelope with
+// SourceNote populated, producing the canonical descriptor JSON
+// shape consumed by loadDescriptor and the nexus-spec migration.
+func writeDescriptorJSON(desc backend.FunctionDescriptor) ([]byte, error) {
+	env := descriptorEnvelope{
+		SourceNote:         sourceNote(desc.Name),
+		FunctionDescriptor: desc,
+	}
+	b, err := json.MarshalIndent(env, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return append(b, '\n'), nil
+}
+
+// loadDescriptor reads a descriptor JSON from path. Any SourceNote
+// metadata key is ignored gracefully: backend.FunctionDescriptor
+// has no such field, so JSON unmarshal drops the unknown key.
+func loadDescriptor(path string) (backend.FunctionDescriptor, error) {
+	var desc backend.FunctionDescriptor
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return desc, fmt.Errorf("read %s: %w", path, err)
+	}
+	if err := json.Unmarshal(b, &desc); err != nil {
+		return desc, fmt.Errorf("parse %s: %w", path, err)
+	}
+	return desc, nil
 }
 
 func paramsFromEnv() nwrfc.Params {

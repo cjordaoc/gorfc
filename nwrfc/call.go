@@ -100,6 +100,12 @@ func Call(ctx context.Context, c *Conn, fn string, in any, out any, optsOpt ...C
 		// from sdkbackend.
 		return nil, mapBackendError(err)
 	}
+	// Go-side throughput fallback: count the successful call.
+	// Bytes/timing stay zero here — those require the SDK-side
+	// counters (see [Throughput.Attach]).
+	if c.tp != nil {
+		c.tp.observe(0, 0, 0, 0)
+	}
 	if out != nil {
 		if err := unmarshalOutput(resp, out); err != nil {
 			return resp, err

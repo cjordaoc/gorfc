@@ -47,6 +47,12 @@ type Conn struct {
 	// Serializes all SDK calls on this Conn (ABAP context
 	// continuity, SDK thread-safety contract).
 	mu sync.Mutex
+
+	// tp is the optional Throughput collector bound via
+	// [Throughput.Attach]. When non-nil, a successful [Call]
+	// feeds the Go-side fallback counter. Set at setup time;
+	// read on the call path.
+	tp *Throughput
 }
 
 const (
