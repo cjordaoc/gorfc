@@ -305,7 +305,7 @@ func (*openShouldNotRunBackend) Ping(context.Context, backend.ConnHandle) error 
 func (*openShouldNotRunBackend) Attributes(backend.ConnHandle) (backend.Attributes, error) {
 	return backend.Attributes{}, nil
 }
-func (*openShouldNotRunBackend) Reset(backend.ConnHandle) error { return nil }
+func (*openShouldNotRunBackend) Reset(context.Context, backend.ConnHandle) error { return nil }
 func (*openShouldNotRunBackend) Describe(context.Context, backend.ConnHandle, string) (backend.FunctionDescriptor, error) {
 	return backend.FunctionDescriptor{}, nil
 }
