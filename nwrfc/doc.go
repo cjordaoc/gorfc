@@ -69,6 +69,28 @@
 // usage examples — pool, session, tRFC, qRFC, bgRFC, server,
 // throughput, codegen, mock backend.
 //
+// # Lazy table streaming
+//
+// [Call] and [CallMap] materialize TABLES parameters before
+// returning. For very large tables, use [CallTableStream] to
+// keep the SDK function handle alive while rows are read one at
+// a time:
+//
+//	res, err := nwrfc.CallTableStream(ctx, conn, "BAPI_MATERIAL_GETLIST", "MATNRLIST", in)
+//	if err != nil { return err }
+//	defer res.Close()
+//
+//	for {
+//	    row, err := res.Next(ctx)
+//	    if errors.Is(err, io.EOF) { break }
+//	    if err != nil { return err }
+//	    _ = row["MATERIAL"]
+//	}
+//
+// While the stream is open the Conn is pinned and must not be
+// returned to a Pool. Close is mandatory even after EOF or early
+// break; it releases the function handle and unlocks the Conn.
+//
 // # Error handling
 //
 // Every error returned from this package implements

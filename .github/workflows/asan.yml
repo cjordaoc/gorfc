@@ -1,0 +1,78 @@
+# SPDX-FileCopyrightText: 2026 gorfc community contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# AddressSanitizer lane for cgo + SAP NWRFC SDK builds.
+# This workflow is deliberately opt-in: public PRs do not have access to
+# proprietary SDK artifacts and protected SAP test credentials.
+
+name: asan
+
+on:
+  workflow_dispatch:
+    inputs:
+      asan:
+        description: "Run the SAP SDK-backed ASan suite"
+        required: true
+        type: boolean
+        default: false
+  schedule:
+    # Maintainers can enable this by setting repository variable
+    # GORFC_TEST_ASAN=1 and provisioning the protected runner/env below.
+    - cron: "17 3 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  sdk-asan:
+    name: sdk-asan
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.asan) || vars.GORFC_TEST_ASAN == '1' }}
+    runs-on: [self-hosted, linux, sap-sandbox]
+    timeout-minutes: 45
+    env:
+      GORFC_TEST_ASAN: "1"
+      SAPNWRFC_HOME: ${{ vars.SAPNWRFC_HOME }}
+      CGO_CFLAGS: ${{ vars.SAPNWRFC_CFLAGS }}
+      CGO_LDFLAGS: ${{ vars.SAPNWRFC_LDFLAGS }}
+      LD_LIBRARY_PATH: ${{ vars.SAPNWRFC_LIBRARY_PATH }}
+      GORFC_TEST_USER: ${{ secrets.GORFC_TEST_USER }}
+      GORFC_TEST_PASSWD: ${{ secrets.GORFC_TEST_PASSWD }}
+      GORFC_TEST_ASHOST: ${{ secrets.GORFC_TEST_ASHOST }}
+      GORFC_TEST_SYSNR: ${{ secrets.GORFC_TEST_SYSNR }}
+      GORFC_TEST_CLIENT: ${{ secrets.GORFC_TEST_CLIENT }}
+      GORFC_TEST_LANG: ${{ secrets.GORFC_TEST_LANG }}
+      ASAN_OPTIONS: detect_leaks=1:halt_on_error=1:abort_on_error=1
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: true
+
+      - name: Verify ASan opt-in and SDK configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${GORFC_TEST_ASAN}" = "1"
+          test -n "${SAPNWRFC_HOME}"
+          test -n "${CGO_CFLAGS}"
+          test -n "${CGO_LDFLAGS}"
+          test -n "${GORFC_TEST_USER}"
+          test -n "${GORFC_TEST_PASSWD}"
+          test -n "${GORFC_TEST_ASHOST}"
+          test -n "${GORFC_TEST_SYSNR}"
+          test -n "${GORFC_TEST_CLIENT}"
+
+      - name: Run SDK-only ASan tests
+        shell: bash
+        run: |
+          go test -asan ./internal/sdktest
+          go test -asan ./nwrfc -run '^(TestSDK|TestCapabilities|TestLanguage|TestSetTrace|TestNewTID|TestNewUnitID|TestUnitState|TestNewQueuedTransaction)'
+
+      - name: Run live SAP marshaling ASan test
+        shell: bash
+        run: |
+          go test -asan ./nwrfc -count=1 -run '^TestASAN_STFCStructure_MarshalingRoundTrip$'

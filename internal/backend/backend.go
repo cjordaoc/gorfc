@@ -62,10 +62,13 @@ type Backend interface {
 	// Open establishes a client connection using the parameters
 	// in p. The returned [ConnHandle] is opaque to callers.
 	//
-	// Open MUST honor ctx for cancellation: implementations
-	// should arrange for `RfcCancel` (or the equivalent
-	// shutdown signal) to fire when ctx is cancelled before the
-	// connection completes.
+	// Open MUST check ctx before entering a blocking SDK open.
+	// The SAP NWRFC SDK does not provide an RFC_CONNECTION_HANDLE
+	// until RfcOpenConnection returns, so SDK-backed
+	// implementations cannot use RfcCancel to interrupt an
+	// in-flight Open. Connection timeout while inside the SDK is
+	// controlled by the SDK/SAP network parameters configured by
+	// the caller's environment.
 	Open(ctx context.Context, p Params) (ConnHandle, error)
 
 	// Close releases the connection. After Close returns, the

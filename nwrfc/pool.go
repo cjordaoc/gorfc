@@ -55,16 +55,17 @@ type poolEntry struct {
 // callers via [Pool.Acquire] / [Pool.Release].
 //
 // Concurrency: every method is safe to call from any goroutine.
-// The internal queue is a buffered channel of *poolEntry so
-// Acquire/Release do not race on a sync.Mutex when there is
-// no contention.
+// The pool keeps idle and checked-out entries behind one mutex
+// so connection lifetime metadata has a single owner.
 type Pool struct {
 	cfg PoolConfig
 
-	mu        sync.Mutex
-	idle      []*poolEntry // LIFO stack of idle entries
-	openCount int          // total currently-open (idle + checked-out)
-	closed    atomic.Bool
+	mu         sync.Mutex
+	idle       []*poolEntry         // LIFO stack of idle entries
+	checkedOut map[*Conn]*poolEntry // entries owned by callers
+	openCount  int                  // total currently-open (idle + checked-out)
+	closed     atomic.Bool
+	done       chan struct{}
 
 	// waiters is the channel-based handoff for waiting
 	// Acquires. When a Release happens with waiters present
@@ -87,8 +88,13 @@ func NewPool(cfg PoolConfig) (*Pool, error) {
 	if err := cfg.Params.validate(); err != nil {
 		return nil, err
 	}
-	p := &Pool{cfg: cfg}
+	p := &Pool{
+		cfg:        cfg,
+		checkedOut: make(map[*Conn]*poolEntry),
+		done:       make(chan struct{}),
+	}
 	go p.warmup()
+	go p.cleanupLoop()
 	return p, nil
 }
 
@@ -109,6 +115,11 @@ func (p *Pool) warmup() {
 		now := time.Now()
 		entry := &poolEntry{conn: c, createdAt: now, lastUsed: now}
 		p.mu.Lock()
+		if p.closed.Load() {
+			p.mu.Unlock()
+			_ = c.Close()
+			return
+		}
 		p.openCount++
 		p.idle = append(p.idle, entry)
 		p.mu.Unlock()
@@ -132,7 +143,7 @@ func (p *Pool) Acquire(ctx context.Context) (*Conn, error) {
 	_ = deadline
 
 	for {
-		entry, ok, err := p.tryGet()
+		entry, ok, err := p.tryGet(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -140,11 +151,18 @@ func (p *Pool) Acquire(ctx context.Context) (*Conn, error) {
 			// Wait for a release.
 			ch := make(chan *poolEntry, 1)
 			p.mu.Lock()
+			if p.closed.Load() {
+				p.mu.Unlock()
+				return nil, &ConfigError{Field: "Pool", Hint: "closed"}
+			}
 			p.waiters = append(p.waiters, ch)
 			p.mu.Unlock()
 
 			select {
-			case e := <-ch:
+			case e, open := <-ch:
+				if !open {
+					return nil, &ConfigError{Field: "Pool", Hint: "closed"}
+				}
 				entry = e
 			case <-ctx.Done():
 				p.removeWaiter(ch)
@@ -163,6 +181,10 @@ func (p *Pool) Acquire(ctx context.Context) (*Conn, error) {
 			}
 		}
 		entry.lastUsed = time.Now()
+		if !p.checkout(entry) {
+			p.discard(entry)
+			return nil, &ConfigError{Field: "Pool", Hint: "closed"}
+		}
 		return entry.conn, nil
 	}
 }
@@ -174,17 +196,22 @@ func (p *Pool) Release(c *Conn, discard bool) {
 	if c == nil {
 		return
 	}
-	if discard || !c.Alive() {
-		p.discardConn(c)
+	p.mu.Lock()
+	entry := p.checkedOut[c]
+	delete(p.checkedOut, c)
+	p.mu.Unlock()
+	if entry == nil {
 		return
 	}
-	// Find the entry. We use a parallel slice rather than a
-	// map because Conns equate to *Conn pointers; this keeps
-	// the cost O(MaxSize) which is fine for typical pools (≤
-	// a few hundred). Larger pools should use a different
-	// indexing structure; documented as a future improvement.
+	if discard || !c.Alive() {
+		p.discard(entry)
+		return
+	}
+	// The entry comes from checkedOut so createdAt survives
+	// every checkout/release cycle and MaxLifetime remains a
+	// true connection lifetime instead of an idle-cycle timer.
 	now := time.Now()
-	entry := &poolEntry{conn: c, createdAt: now, lastUsed: now}
+	entry.lastUsed = now
 	p.releaseInternal(entry)
 }
 
@@ -198,7 +225,9 @@ func (p *Pool) releaseInternal(entry *poolEntry) {
 
 	if p.closed.Load() {
 		_ = entry.conn.Close()
-		p.openCount--
+		if p.openCount > 0 {
+			p.openCount--
+		}
 		return
 	}
 	// Hand off directly to a waiter if any.
@@ -217,8 +246,15 @@ func (p *Pool) releaseInternal(entry *poolEntry) {
 // connection is opened; idle pops do not change it because the
 // pop just moves the conn from idle to checked-out (still
 // counted as open).
-func (p *Pool) tryGet() (*poolEntry, bool, error) {
+func (p *Pool) tryGet(ctx context.Context) (*poolEntry, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, false, err
+	}
 	p.mu.Lock()
+	if p.closed.Load() {
+		p.mu.Unlock()
+		return nil, false, &ConfigError{Field: "Pool", Hint: "closed"}
+	}
 	if n := len(p.idle); n > 0 {
 		e := p.idle[n-1]
 		p.idle = p.idle[:n-1]
@@ -229,12 +265,19 @@ func (p *Pool) tryGet() (*poolEntry, bool, error) {
 		p.openCount++
 		p.mu.Unlock()
 		// Open outside the lock.
-		c, err := Open(context.Background(), p.cfg.Params)
+		c, err := Open(ctx, p.cfg.Params)
 		if err != nil {
 			p.mu.Lock()
 			p.openCount--
 			p.mu.Unlock()
 			return nil, false, err
+		}
+		if p.closed.Load() {
+			_ = c.Close()
+			p.mu.Lock()
+			p.openCount--
+			p.mu.Unlock()
+			return nil, false, &ConfigError{Field: "Pool", Hint: "closed"}
 		}
 		now := time.Now()
 		return &poolEntry{conn: c, createdAt: now, lastUsed: now}, true, nil
@@ -275,6 +318,91 @@ func (p *Pool) discardConn(c *Conn) {
 	p.mu.Unlock()
 }
 
+func (p *Pool) checkout(e *poolEntry) bool {
+	if e == nil || e.conn == nil {
+		return false
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed.Load() {
+		return false
+	}
+	p.checkedOut[e.conn] = e
+	return true
+}
+
+func (p *Pool) cleanupLoop() {
+	interval := p.cleanupInterval()
+	t := time.NewTicker(interval)
+	defer t.Stop()
+	for {
+		select {
+		case <-t.C:
+			p.cleanupIdle()
+		case <-p.done:
+			return
+		}
+	}
+}
+
+func (p *Pool) cleanupInterval() time.Duration {
+	minPositive := func(a, b time.Duration) time.Duration {
+		switch {
+		case a <= 0:
+			return b
+		case b <= 0:
+			return a
+		case a < b:
+			return a
+		default:
+			return b
+		}
+	}
+	d := minPositive(p.cfg.IdleTimeout, p.cfg.MaxLifetime)
+	if d <= 0 {
+		return 30 * time.Second
+	}
+	if d <= 2*time.Millisecond {
+		return d
+	}
+	return d / 2
+}
+
+func (p *Pool) cleanupIdle() {
+	var expired []*poolEntry
+	p.mu.Lock()
+	kept := p.idle[:0]
+	for _, e := range p.idle {
+		if p.entryValid(e) {
+			kept = append(kept, e)
+			continue
+		}
+		expired = append(expired, e)
+	}
+	for i := len(kept); i < len(p.idle); i++ {
+		p.idle[i] = nil
+	}
+	p.idle = kept
+	p.mu.Unlock()
+
+	for _, e := range expired {
+		if e != nil && e.conn != nil {
+			_ = e.conn.Close()
+		}
+
+		p.mu.Lock()
+		if p.openCount > 0 {
+			p.openCount--
+		}
+		if p.openCount < p.cfg.MaxSize && len(p.waiters) > 0 {
+			ch := p.waiters[0]
+			p.waiters = p.waiters[1:]
+			ch <- nil
+		}
+		p.mu.Unlock()
+	}
+}
+
 func (p *Pool) removeWaiter(ch chan *poolEntry) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -293,15 +421,21 @@ func (p *Pool) Close() error {
 	if !p.closed.CompareAndSwap(false, true) {
 		return nil
 	}
+	close(p.done)
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	var errs []error
+	idleCount := len(p.idle)
 	for _, e := range p.idle {
 		if err := e.conn.Close(); err != nil {
 			errs = append(errs, err)
 		}
 	}
 	p.idle = nil
+	p.openCount -= idleCount
+	if p.openCount < 0 {
+		p.openCount = 0
+	}
 	for _, w := range p.waiters {
 		close(w)
 	}

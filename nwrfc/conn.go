@@ -40,8 +40,7 @@ type Conn struct {
 	backend backend.Backend
 	dest    string // populated by OpenDest, empty otherwise
 
-	// state == 1 once Close has been called. Read with
-	// atomic.LoadUint32 from any goroutine; written under mu.
+	// state == 1 once Close has been called.
 	state atomic.Uint32
 
 	// Serializes all SDK calls on this Conn (ABAP context
@@ -59,13 +58,21 @@ const (
 // network setup; this function only enforces validation,
 // redaction, and lifecycle bookkeeping.
 //
-// ctx may carry a deadline; the backend honors it (the cgo
-// backend arranges a watcher goroutine that calls RfcCancel
-// when ctx is cancelled).
+// Cancellation contract: if ctx is already cancelled or expired,
+// Open returns ctx.Err() before validation or backend dispatch.
+// After the cgo backend enters RfcOpenConnection, gorfc cannot
+// cancel the attempt with RfcCancel because the SDK only returns
+// an RFC_CONNECTION_HANDLE after a successful open. During that
+// interval, timeout behavior is controlled by the SAP NWRFC SDK,
+// SAP gateway/SAProuter, and operating-system network
+// configuration in the caller's environment.
 //
 // On error, no Conn is returned and no resources need cleanup
 // — the backend handles partial-Open rollback internally.
 func Open(ctx context.Context, p Params) (*Conn, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if err := p.validate(); err != nil {
 		return nil, err
 	}
@@ -206,15 +213,6 @@ func (c *Conn) Backend() backend.Backend { return c.backend }
 // internal Call / Describe path; external code does not need
 // to look at this.
 func (c *Conn) Handle() backend.ConnHandle { return c.handle }
-
-// Lock and Unlock manage the per-Conn mutex from outside the
-// package. Used by the internal Call / Describe path
-// implemented in T1.8 to serialize SDK access. Public for the
-// benefit of the Pool (T1.10) which composes Conn with its own
-// queue. NOT part of the stable user API; will become internal
-// once T1.8 lands.
-func (c *Conn) Lock()   { c.mu.Lock() }
-func (c *Conn) Unlock() { c.mu.Unlock() }
 
 // LogValue redacts the connection identity in logs. Emits the
 // destination name (if any), the system ID (if attributes were

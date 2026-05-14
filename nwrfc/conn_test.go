@@ -90,6 +90,26 @@ func TestOpenDest_RequiresName(t *testing.T) {
 	}
 }
 
+// TestOpen_CancelledContextFailsBeforeBackend: Open must honor an
+// already-cancelled ctx without validating Params or dispatching
+// to the active backend.
+func TestOpen_CancelledContextFailsBeforeBackend(t *testing.T) {
+	b := &openShouldNotRunBackend{}
+	prev := backend.SetTesting(b)
+	t.Cleanup(prev)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := nwrfc.Open(ctx, nwrfc.Params{})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err=%v want context.Canceled", err)
+	}
+	if b.openCalled {
+		t.Fatal("backend Open was called despite cancelled context")
+	}
+}
+
 // TestParams_LogValueRedacts: passwords and tickets do not
 // reach slog output.
 func TestParams_LogValueRedacts(t *testing.T) {
@@ -193,3 +213,34 @@ func (*happyBackend) Invoke(_ context.Context, _ backend.ConnHandle, _ string, _
 	return backend.CallParams{}, nil
 }
 func (*happyBackend) InvalidateMetadata(string) error { return nil }
+
+type openShouldNotRunBackend struct {
+	openCalled bool
+}
+
+func (*openShouldNotRunBackend) Name() string { return "open-should-not-run" }
+func (*openShouldNotRunBackend) Version() backend.Version {
+	return backend.Version{}
+}
+func (*openShouldNotRunBackend) Capabilities() backend.Capabilities {
+	return backend.Capabilities{}
+}
+func (b *openShouldNotRunBackend) Open(context.Context, backend.Params) (backend.ConnHandle, error) {
+	b.openCalled = true
+	return 0, errors.New("backend Open should not run")
+}
+func (*openShouldNotRunBackend) Close(backend.ConnHandle) error { return nil }
+func (*openShouldNotRunBackend) Ping(context.Context, backend.ConnHandle) error {
+	return nil
+}
+func (*openShouldNotRunBackend) Attributes(backend.ConnHandle) (backend.Attributes, error) {
+	return backend.Attributes{}, nil
+}
+func (*openShouldNotRunBackend) Reset(backend.ConnHandle) error { return nil }
+func (*openShouldNotRunBackend) Describe(context.Context, backend.ConnHandle, string) (backend.FunctionDescriptor, error) {
+	return backend.FunctionDescriptor{}, nil
+}
+func (*openShouldNotRunBackend) Invoke(context.Context, backend.ConnHandle, string, backend.CallParams, backend.InvokeOptions) (backend.CallParams, error) {
+	return backend.CallParams{}, nil
+}
+func (*openShouldNotRunBackend) InvalidateMetadata(string) error { return nil }

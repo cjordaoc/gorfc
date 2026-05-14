@@ -182,6 +182,14 @@ func (b *sdkBackend) Invoke(ctx context.Context, h backend.ConnHandle, fn string
 	return invokeFunction(ctx, c, fn, in, opts)
 }
 
+func (b *sdkBackend) InvokeTableStream(ctx context.Context, h backend.ConnHandle, fn string, table string, in backend.CallParams, opts backend.InvokeOptions) (backend.TableStream, error) {
+	c, err := b.conns.get(h)
+	if err != nil {
+		return nil, err
+	}
+	return invokeTableStream(ctx, c, fn, table, in, opts)
+}
+
 func (b *sdkBackend) InvalidateMetadata(fn string) error {
 	return invalidateMetadata(fn)
 }

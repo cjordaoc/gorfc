@@ -48,8 +48,9 @@ embed it in a span attribute without leaking credentials.
 
 ## Validation
 
-`nwrfc.Open(ctx, p)` calls `p.validate()` before reaching the SDK and
-fails fast with `*nwrfc.ConfigError` on:
+`nwrfc.Open(ctx, p)` checks `ctx.Err()` first. If the context is still
+active, it calls `p.validate()` before reaching the SDK and fails fast
+with `*nwrfc.ConfigError` on:
 
 - No transport set (none of Dest, AsHost+SysNr, MsHost+R3Name+Group,
   WSHost+WSPort).
@@ -66,6 +67,45 @@ if errors.Is(err, nwrfc.ErrConfig) {
     log.Printf("config error in %s: %s", ce.Field, ce.Hint)
 }
 ```
+
+## Open cancellation and connection timeout
+
+`nwrfc.Open(ctx, p)` checks `ctx.Err()` before validation and before
+dispatching to the active backend. If the context is already cancelled or
+expired, `Open` returns that context error and does not call the SDK.
+
+Once the cgo backend has entered `RfcOpenConnection`, gorfc cannot cancel
+the operation with `RfcCancel`: the SAP NWRFC SDK only returns an
+`RFC_CONNECTION_HANDLE` after a successful open, and `RfcCancel` needs an
+existing handle. A `context.WithTimeout` deadline around `Open` is
+therefore a pre-call guard, not a guaranteed interrupt for an in-flight
+SDK connection attempt.
+
+Control connection-open timeout through the SAP/SAProuter/gateway and
+network configuration for the destination. SAP documents
+[`RfcOpenConnection`](https://help.sap.com/doc/saphelp_nw75/7.5.5/en-US/48/b0ff6b792d356be10000000a421937/content.htm)
+as the client-open entrypoint and lists the accepted connection parameter
+families (`ashost`/`sysnr`, `mshost`/message-server fields, SNC, SSO
+ticket, or `dest`). SAP also documents that
+[`sapnwrfc.ini`](https://help.sap.com/saphelp_em92/helpdata/de/48/ce50e418d3424be10000000a421937/content.htm)
+can carry RFC-specific parameters without code changes. Gateway-level
+connection timeout behavior is controlled by SAP profile parameters such
+as
+[`gw/cpic_timeout`](https://help.sap.com/saphelp_gbt10/helpdata/DE/48/ad5afa8bc96744e10000000a421937/content.htm)
+for CPIC connection setup.
+
+T3 validation record (2026-05-14): this checkout has no configured SAP
+NWRFC SDK or test destination, so the SAP-backed command could not enter
+`RfcOpenConnection`. The local probe also could not reach the documented
+example dispatcher endpoint. Do not document or depend on an unnamed
+SDK-level open-timeout parameter in `Params.Extra` or `sapnwrfc.ini` for
+this release. The concrete SAP-owned limit documented for CPIC connection
+setup is the gateway profile parameter `gw/cpic_timeout`; when an operator
+needs a shorter bound than the SAP landscape provides, the documented
+application workaround is an external process supervisor, job runner, or
+orchestrator timeout that can terminate the process blocked inside the
+native SDK call. gorfc deliberately does not spawn an abandoned
+`RfcOpenConnection` goroutine as a synthetic fallback.
 
 ## sapnwrfc.ini
 

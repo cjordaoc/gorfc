@@ -5,6 +5,16 @@ This file follows Keep a Changelog (https://keepachangelog.com/) and
 SemVer with the relaxation declared in docs/PLAN.md §12 decision 12:
 v0.x is unstable; v1.0.0 freezes the public API.
 
+## Unreleased
+
+### Changed
+
+- `nwrfc.Conn.Lock` and `nwrfc.Conn.Unlock` were removed from the public API.
+  Callers must stop managing `Conn` locking directly: serialization of RFC
+  calls, metadata operations, resets, session close, and connection close is
+  now internal to the package. Use `Pool` for concurrent RFC work instead of
+  sharing one connection across goroutines.
+
 ## Unreleased — 2026-05-07 (tRFC/qRFC/bgRFC client wiring + qRFC correction)
 
 Implements the cgo bindings and Go-side dispatch for the

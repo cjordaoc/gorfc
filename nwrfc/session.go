@@ -6,6 +6,8 @@ package nwrfc
 import (
 	"context"
 	"errors"
+	"sync"
+	"sync/atomic"
 
 	"github.com/cjordaoc/gorfc/internal/backend"
 )
@@ -26,8 +28,11 @@ import (
 // two goroutines sharing a Session is safe but pointless — the
 // calls serialize.
 type Session struct {
-	conn   *Conn
-	closed bool
+	conn *Conn
+
+	mu      sync.Mutex
+	closing atomic.Bool
+	closed  atomic.Bool
 }
 
 // NewSession opens a stateful session on c. The returned
@@ -49,7 +54,12 @@ func NewSession(ctx context.Context, c *Conn) (*Session, error) {
 // Call is a stateful Call: the ABAP context is preserved between
 // calls within this Session.
 func (s *Session) Call(ctx context.Context, fn string, in, out any, opts ...CallOptions) (backend.CallParams, error) {
-	if s == nil || s.closed {
+	if s == nil {
+		return nil, &BrokenConnectionError{Reason: "session closed", Cause: ErrConnClosed}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed.Load() {
 		return nil, &BrokenConnectionError{Reason: "session closed", Cause: ErrConnClosed}
 	}
 	return Call(ctx, s.conn, fn, in, out, opts...)
@@ -59,45 +69,68 @@ func (s *Session) Call(ctx context.Context, fn string, in, out any, opts ...Call
 // on the SAP system. If WithWait is true, the BAPI is called
 // with WAIT='X' so the COMMIT WORK AND WAIT semantic applies.
 func (s *Session) Commit(ctx context.Context, withWait bool) error {
-	if s == nil || s.closed {
-		return nil
-	}
 	in := backend.CallParams{}
 	if withWait {
 		in["WAIT"] = "X"
 	}
-	resp, err := s.conn.backend.Invoke(ctx, s.conn.handle, "BAPI_TRANSACTION_COMMIT", in, backend.InvokeOptions{})
-	if err != nil {
-		return err
-	}
-	// Reset SAP-side context so the next call on this Conn
-	// starts clean.
-	if rerr := s.conn.backend.Reset(s.conn.handle); rerr != nil {
-		err = errors.Join(err, rerr)
-	}
-	s.closed = true
-	if returnErr := bapiReturnAsError(resp); returnErr != nil {
-		return returnErr
-	}
-	return err
+	return s.close(ctx, "BAPI_TRANSACTION_COMMIT", in, false)
 }
 
 // Rollback closes the session by invoking
 // BAPI_TRANSACTION_ROLLBACK and resetting the server context.
 func (s *Session) Rollback(ctx context.Context) error {
-	if s == nil || s.closed {
-		return nil
+	return s.close(ctx, "BAPI_TRANSACTION_ROLLBACK", backend.CallParams{}, true)
+}
+
+func (s *Session) claimClose() (*Conn, bool, error) {
+	if s == nil {
+		return nil, false, nil
 	}
-	resp, err := s.conn.backend.Invoke(ctx, s.conn.handle, "BAPI_TRANSACTION_ROLLBACK", backend.CallParams{}, backend.InvokeOptions{})
-	if err != nil {
-		_ = s.conn.backend.Reset(s.conn.handle)
-		s.closed = true
+	if s.closed.Load() {
+		return nil, false, nil
+	}
+	if !s.closing.CompareAndSwap(false, true) {
+		return nil, false, nil
+	}
+	if s.conn == nil {
+		s.closing.Store(false)
+		return nil, true, &BrokenConnectionError{Reason: "nil Conn", Cause: ErrConnClosed}
+	}
+	return s.conn, true, nil
+}
+
+func (s *Session) close(ctx context.Context, fn string, in backend.CallParams, resetOnInvokeErr bool) error {
+	c, claimed, err := s.claimClose()
+	if !claimed || err != nil {
 		return err
 	}
-	if rerr := s.conn.backend.Reset(s.conn.handle); rerr != nil {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	defer s.closing.Store(false)
+	if s.closed.Load() {
+		return nil
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err := c.checkOpen(); err != nil {
+		return err
+	}
+	resp, err := c.backend.Invoke(ctx, c.handle, fn, in, backend.InvokeOptions{})
+	if err != nil {
+		if resetOnInvokeErr {
+			if rerr := c.backend.Reset(c.handle); rerr != nil {
+				return errors.Join(err, rerr)
+			}
+			s.closed.Store(true)
+		}
+		return err
+	}
+	// Reset SAP-side context so the next call on this Conn
+	// starts clean.
+	if rerr := c.backend.Reset(c.handle); rerr != nil {
 		err = errors.Join(err, rerr)
 	}
-	s.closed = true
+	s.closed.Store(true)
 	if returnErr := bapiReturnAsError(resp); returnErr != nil {
 		return returnErr
 	}

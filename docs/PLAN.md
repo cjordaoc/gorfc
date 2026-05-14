@@ -344,6 +344,7 @@ Versão alvo: **Go 1.25** (`toolchain go1.25.0`). Justificativa:
 - `Open`, `Ping`, `Call`, `Describe`, `Submit/Confirm` (tx, unit), `Acquire` (pool) → `ctx`.
 - `Close`, `Release` → sem `ctx` (idempotente, deve ser não-bloqueante e finalizar mesmo em shutdown).
 - `Conn.Cancel(ctx)` interno: dispara `RfcCancel(handle)` 🟡 quando `ctx.Done()` fecha durante `Invoke`. Implementação: goroutine watcher por chamada que faz `select { case <-ctx.Done(): backend.Cancel(handle); case <-done: }`.
+- `Open(ctx, ...)`: honra `ctx.Err()` antes de entrar no backend/SDK. Durante `RfcOpenConnection`, gorfc não consegue chamar `RfcCancel`, porque o `RFC_CONNECTION_HANDLE` só existe depois do retorno bem-sucedido da abertura. Timeout de conexão em voo deve ser configurado no SAP NWRFC SDK / gateway / SAProuter / rede do sistema.
 
 **Não fazer:** propagar `ctx` em `Close()` para honrar timeout — `Close` deve ser síncrono e rápido; se SDK travar, ele trava. Documentar.
 
@@ -647,6 +648,26 @@ _, err := conn.Call(ctx, "Z_LONG_REPORT", in, &out)
 if errors.Is(err, nwrfc.ErrCancelled) { /* ctx ended */ }
 if errors.Is(err, nwrfc.ErrTimeout)   { /* deadline */ }
 ```
+
+`Open(ctx, params)` has a narrower cancellation contract than `Call`:
+the context is checked before `RfcOpenConnection`, but there is no
+`RFC_CONNECTION_HANDLE` available while the SDK is opening the
+connection, so `RfcCancel` cannot be used for in-flight open
+cancellation. Open-timeout behavior must be configured through
+destination/SAP network settings such as SAP gateway CPIC connection
+timeouts, SAProuter, or OS network limits.
+
+T3 validation record (2026-05-14): the local workspace did not have
+`sapnwrfc.h`, `libsapnwrfc`, `sapnwrfc.dll`, a SDK ZIP, or the
+`GORFC_TEST_*` variables needed to open a SAP-backed test connection, and
+the documented example dispatcher endpoint was not reachable from this
+host. Therefore no SDK-level `RfcOpenConnection` timeout key is accepted
+as verified in this plan. The concrete SAP-owned setting to document for
+CPIC setup is the gateway profile parameter `gw/cpic_timeout`. If a
+deployment needs a stronger wall-clock bound than the SAP landscape
+enforces, the accepted workaround is an external supervisor/orchestrator
+timeout that can terminate the process; gorfc must not fake cancellation
+by leaving an in-flight native open call running without an owned handle.
 
 ### 5.9 notRequested
 
@@ -1529,6 +1550,7 @@ PRs pequenos, mergeáveis isoladamente, com rollback claro.
 | `docs/SECURITY.md` | §8 desta resposta | T0 v0; expandido T1, T2 |
 | `docs/ERRORS.md` | §7 desta resposta + exemplos `errors.Is/As` | T1.3 |
 | `docs/TESTING.md` | §9 + como rodar SDK-free / SDK-present / integration | T1.7 |
+| `docs/BENCHMARKS.md` | baselines SDK-free para comparar otimizações de performance | T4 |
 | `docs/COMPATIBILITY.md` | matriz Go × SDK PL × OS × feature | T1.15 |
 | `docs/CONTRIBUTING.md` | DCO, ground rules, AGENTS.md ref, EULA caveat | T0 |
 | `docs/MIGRATION_FROM_GORFC.md` | mapping antigo → novo, com diff de comportamento (zero date, etc) | T4.5 |

@@ -1,0 +1,41 @@
+{
+  "SourceNote": "Reference descriptor for nexus-spec migration. Regenerate with `nwrfc-gen describe --fn BAPI_USER_EXISTENCE_CHECK` against the target SAP system before producing customer-specific generated code.",
+  "Name": "BAPI_USER_EXISTENCE_CHECK",
+  "Parameters": [
+    {
+      "Name": "USERNAME",
+      "Type": 0,
+      "Direction": 1,
+      "Length": 12,
+      "Decimals": 0,
+      "Optional": false
+    },
+    {
+      "Name": "RETURN",
+      "Type": 17,
+      "Direction": 2,
+      "Length": 0,
+      "Decimals": 0,
+      "Optional": true,
+      "TypeDesc": {
+        "Name": "BAPIRET2",
+        "Fields": [
+          { "Name": "TYPE", "Type": 0, "Length": 1, "Decimals": 0, "Offset": 0 },
+          { "Name": "ID", "Type": 0, "Length": 20, "Decimals": 0, "Offset": 1 },
+          { "Name": "NUMBER", "Type": 6, "Length": 3, "Decimals": 0, "Offset": 21 },
+          { "Name": "MESSAGE", "Type": 0, "Length": 220, "Decimals": 0, "Offset": 24 },
+          { "Name": "LOG_NO", "Type": 0, "Length": 20, "Decimals": 0, "Offset": 244 },
+          { "Name": "LOG_MSG_NO", "Type": 6, "Length": 6, "Decimals": 0, "Offset": 264 },
+          { "Name": "MESSAGE_V1", "Type": 0, "Length": 50, "Decimals": 0, "Offset": 270 },
+          { "Name": "MESSAGE_V2", "Type": 0, "Length": 50, "Decimals": 0, "Offset": 320 },
+          { "Name": "MESSAGE_V3", "Type": 0, "Length": 50, "Decimals": 0, "Offset": 370 },
+          { "Name": "MESSAGE_V4", "Type": 0, "Length": 50, "Decimals": 0, "Offset": 420 },
+          { "Name": "PARAMETER", "Type": 0, "Length": 32, "Decimals": 0, "Offset": 470 },
+          { "Name": "ROW", "Type": 8, "Length": 4, "Decimals": 0, "Offset": 502 },
+          { "Name": "FIELD", "Type": 0, "Length": 30, "Decimals": 0, "Offset": 506 },
+          { "Name": "SYSTEM", "Type": 0, "Length": 10, "Decimals": 0, "Offset": 536 }
+        ]
+      }
+    }
+  ]
+}

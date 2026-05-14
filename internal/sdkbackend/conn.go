@@ -42,10 +42,12 @@ func setSDKConnPtr(c *connHandle, h C.RFC_CONNECTION_HANDLE) {
 //
 // SDK function: RfcOpenConnection (✅ confirmed; 7.50 PL3+).
 //
-// 🟡 ctx cancel: T1.9 wires a watcher goroutine. Until that
-// lands, this function honors ctx only at the pre-call check;
-// once `RfcOpenConnection` blocks in the SDK, only a peer
-// timeout will return.
+// Cancellation contract: Open honors ctx before entering the
+// SDK by returning ctx.Err(). Once RfcOpenConnection is in
+// progress there is no RFC_CONNECTION_HANDLE yet, so gorfc
+// cannot call RfcCancel for this operation. Connect-time
+// limits therefore come from the SAP NWRFC SDK / SAP gateway /
+// SAProuter / operating-system network configuration in use.
 func openConn(ctx context.Context, p backend.Params) (*connHandle, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err

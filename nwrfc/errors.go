@@ -107,6 +107,13 @@ var (
 	// caller uses a Conn after Close. The Conn keeps a state
 	// flag rather than relying on the SDK to detect the misuse.
 	ErrConnClosed = errors.New("nwrfc: connection is closed")
+
+	// ErrStreamClosed is returned when a caller reads a lazy
+	// table stream after Close. It is separate from
+	// ErrConnClosed because closing a stream does not close the
+	// SAP connection; it only releases the pinned function
+	// handle and unlocks the Conn.
+	ErrStreamClosed = errors.New("nwrfc: table stream is closed")
 )
 
 // sentinel is the type backing every Err* package value. It is

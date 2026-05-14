@@ -77,6 +77,10 @@ func (b *noSDK) Invoke(_ context.Context, _ backend.ConnHandle, fn string, _ bac
 	_ = fn
 	return nil, b.errSDKUnavailable("Invoke")
 }
+func (b *noSDK) InvokeTableStream(_ context.Context, _ backend.ConnHandle, fn string, table string, _ backend.CallParams, _ backend.InvokeOptions) (backend.TableStream, error) {
+	_, _ = fn, table
+	return nil, b.errSDKUnavailable("InvokeTableStream")
+}
 func (b *noSDK) InvalidateMetadata(fn string) error {
 	_ = fn
 	return b.errSDKUnavailable("InvalidateMetadata")

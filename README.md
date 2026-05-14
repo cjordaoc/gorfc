@@ -74,11 +74,20 @@ The full compatibility matrix (Go × SDK PL × OS × feature) will live in
 `docs/COMPATIBILITY.md` and will be capability-detected at runtime via
 `RfcGetVersion`.
 
+### Migration note: `Conn.Lock` / `Conn.Unlock`
+
+The modern `nwrfc.Conn` API no longer exposes `Lock` or `Unlock` methods.
+Callers must stop managing connection locking directly. A single `Conn`
+serializes RFC calls, metadata operations, resets, session close, and close
+internally; callers that need concurrent RFC work should use `Pool` instead of
+sharing one connection across goroutines.
+
 ## Documentation
 
 | Document | Purpose |
 |---|---|
 | [docs/PLAN.md](docs/PLAN.md) | Authoritative consolidation plan: architecture, feature matrix, modernization, public API, cgo strategy, errors, security, testing, roadmap, PR sequence, decision log |
+| [docs/INTEGRATION_GUIDE.md](docs/INTEGRATION_GUIDE.md) | Consumer integration contract for SOAP-to-native RFC migration and Nexus BAPI descriptors |
 | [docs/PROJECT_OBJECTIVE.md](docs/PROJECT_OBJECTIVE.md) | Scope, success criteria, license boundary |
 | [docs/GORFC_REVIVAL_ASSESSMENT.md](docs/GORFC_REVIVAL_ASSESSMENT.md) | Strengths and gaps in upstream code |
 | [docs/PORTING_STRATEGY.md](docs/PORTING_STRATEGY.md) | Tier-based porting strategy |
@@ -173,6 +182,28 @@ still works against the SDK if you set `CGO_CFLAGS`/`CGO_LDFLAGS`, but is
 documented to have memory-leak and silent-fallback bugs (see
 [docs/GORFC_REVIVAL_ASSESSMENT.md](docs/GORFC_REVIVAL_ASSESSMENT.md) and
 [docs/PLAN.md](docs/PLAN.md) §1.3).
+
+## Lazy table streaming
+
+Large TABLES responses can be read with `nwrfc.CallTableStream` instead of
+materializing the complete table through `Call` / `CallMap`:
+
+```go
+res, err := nwrfc.CallTableStream(ctx, conn, "BAPI_MATERIAL_GETLIST", "MATNRLIST", in)
+if err != nil { return err }
+defer res.Close()
+
+for {
+    row, err := res.Next(ctx)
+    if errors.Is(err, io.EOF) { break }
+    if err != nil { return err }
+    _ = row["MATERIAL"]
+}
+```
+
+The stream owns the live SDK function handle. While it is open, the connection
+is pinned and must not be returned to a pool. `Close` is mandatory after EOF,
+early break, cancellation, or iteration error.
 
 ## Licensing
 

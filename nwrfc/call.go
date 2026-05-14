@@ -91,8 +91,8 @@ func Call(ctx context.Context, c *Conn, fn string, in any, out any, optsOpt ...C
 		return nil, err
 	}
 
-	c.Lock()
-	defer c.Unlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	resp, err := c.backend.Invoke(ctx, c.handle, fn, inMap, opts.toBackend())
 	if err != nil {
 		// Translate backend.SDKError → typed RFCError. The
