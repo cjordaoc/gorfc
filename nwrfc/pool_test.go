@@ -553,7 +553,7 @@ func (b *countingBackend) Ping(_ context.Context, _ backend.ConnHandle) error { 
 func (b *countingBackend) Attributes(backend.ConnHandle) (backend.Attributes, error) {
 	return backend.Attributes{SysID: "TST"}, nil
 }
-func (b *countingBackend) Reset(backend.ConnHandle) error { return nil }
+func (b *countingBackend) Reset(context.Context, backend.ConnHandle) error { return nil }
 func (b *countingBackend) Describe(_ context.Context, _ backend.ConnHandle, _ string) (backend.FunctionDescriptor, error) {
 	return backend.FunctionDescriptor{}, nil
 }
@@ -612,7 +612,7 @@ func (b *blockingCloseBackend) Ping(_ context.Context, _ backend.ConnHandle) err
 func (b *blockingCloseBackend) Attributes(backend.ConnHandle) (backend.Attributes, error) {
 	return backend.Attributes{SysID: "TST"}, nil
 }
-func (b *blockingCloseBackend) Reset(backend.ConnHandle) error { return nil }
+func (b *blockingCloseBackend) Reset(context.Context, backend.ConnHandle) error { return nil }
 func (b *blockingCloseBackend) Describe(_ context.Context, _ backend.ConnHandle, _ string) (backend.FunctionDescriptor, error) {
 	return backend.FunctionDescriptor{}, nil
 }
@@ -678,7 +678,7 @@ func (b *stagedCloseBackend) Ping(_ context.Context, _ backend.ConnHandle) error
 func (b *stagedCloseBackend) Attributes(backend.ConnHandle) (backend.Attributes, error) {
 	return backend.Attributes{SysID: "TST"}, nil
 }
-func (b *stagedCloseBackend) Reset(backend.ConnHandle) error { return nil }
+func (b *stagedCloseBackend) Reset(context.Context, backend.ConnHandle) error { return nil }
 func (b *stagedCloseBackend) Describe(_ context.Context, _ backend.ConnHandle, _ string) (backend.FunctionDescriptor, error) {
 	return backend.FunctionDescriptor{}, nil
 }
