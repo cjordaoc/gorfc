@@ -46,6 +46,12 @@ type Conn struct {
 	// Serializes all SDK calls on this Conn (ABAP context
 	// continuity, SDK thread-safety contract).
 	mu sync.Mutex
+
+	// tp is the optional Throughput collector bound via
+	// [Throughput.Attach]. When non-nil, a successful [Call]
+	// feeds the Go-side fallback counter. Set at setup time;
+	// read on the call path.
+	tp *Throughput
 }
 
 const (
@@ -77,6 +83,25 @@ func Open(ctx context.Context, p Params) (*Conn, error) {
 		return nil, err
 	}
 	b := backend.Default()
+
+	// Capability hardlock for WebSocket RFC. Silent downgrade
+	// to a non-WSRFC connection on an SDK PL that does not
+	// support it would be an information-leak / connectivity
+	// risk; fail-fast instead. AGENTS.md "no silent fallback".
+	if err := enforceCapabilities(p, b); err != nil {
+		fireEvent(EventBroken, p.Dest, err)
+		return nil, err
+	}
+
+	// Honor process-global MaxTraceLevel cap if set on this
+	// Params. Stamping the cap here means the cap is in place
+	// for the lifetime of the process from the first Open
+	// onwards; subsequent Params{MaxTraceLevel: X} only
+	// tightens (a looser value cannot relax the cap).
+	if p.MaxTraceLevel > 0 {
+		setMaxTraceLevelFloor(p.MaxTraceLevel)
+	}
+
 	bp := p.toBackendParams()
 	h, err := b.Open(ctx, bp)
 	if err != nil {
@@ -167,13 +192,70 @@ func (c *Conn) Ping(ctx context.Context) error {
 // Reset clears the ABAP session state on the SAP system
 // (RfcResetServerContext). Used between Pool checkouts to
 // prevent LUW state leaking across callers.
-func (c *Conn) Reset() error {
+//
+// Honors ctx via the same cancel-watcher contract as Ping /
+// Invoke: a cancelled ctx returns *TimeoutError or
+// *CancelledError; otherwise the backend's RC is mapped
+// through the typed error hierarchy.
+func (c *Conn) Reset(ctx context.Context) error {
 	if err := c.checkOpen(); err != nil {
 		return err
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if err := c.backend.Reset(c.handle); err != nil {
+	if err := c.backend.Reset(ctx, c.handle); err != nil {
+		return mapBackendError(err)
+	}
+	return nil
+}
+
+// Cancel asks the SDK to interrupt any RFC call currently
+// blocking on this Conn (Open, Ping, Reset, Describe, Invoke).
+// Idempotent: repeated calls return nil. Safe to call from a
+// goroutine other than the one in flight — that is the entire
+// point. See docs/EVIDENCE/sdk-cancel.md for the SDK contract.
+//
+// Cancel does NOT close the connection. The blocked goroutine
+// unblocks with *CancelledError; the caller is then expected
+// to call Close to release the SDK handle.
+//
+// SAP CAVEAT: cancelling a mid-flight Update / Insert / Delete
+// BAPI or any mutating function module may leave the ABAP side
+// in an indeterminate state. The ABAP work process may have
+// committed the change, may have rolled back, or may be holding
+// a partial transaction. For mutating operations, prefer:
+//
+//   - generous per-call ctx deadlines instead of mid-call cancel,
+//   - explicit transactional design (tRFC / qRFC / bgRFC),
+//   - SAP-side state confirmation via a separate read after a
+//     cancellation.
+//
+// Cancel is safe and recommended for read-only / idempotent
+// FMs, the handshake during Open, Ping, Describe, Reset, and
+// any operation the operator has classified as `read` or
+// `idempotent` (see docs/EVIDENCE/SCHEMA.md).
+//
+// If the active backend does not advertise the
+// [backend.Cancellable] capability (the no-SDK stub or a
+// mock), Cancel returns *UnsupportedFeatureError.
+func (c *Conn) Cancel() error {
+	if c == nil {
+		return nil
+	}
+	// Use after Close: idempotent no-op. The SDK call would
+	// also be safe, but skipping it avoids a registry miss in
+	// the cgo backend's bookkeeping.
+	if c.state.Load() == connStateClosed {
+		return nil
+	}
+	cancellable, ok := c.backend.(backend.Cancellable)
+	if !ok {
+		return &UnsupportedFeatureError{
+			Feature:        "Cancel",
+			CurrentVersion: c.backend.Version(),
+		}
+	}
+	if err := cancellable.Cancel(c.handle); err != nil {
 		return mapBackendError(err)
 	}
 	return nil
@@ -311,7 +393,12 @@ func sdkErrorToTyped(e *backend.SDKError) error {
 	}
 	switch e.Info.Group {
 	case backend.GroupLogonFailure:
-		return &LogonError{SDKErrorInfo: info}
+		// Refine into PasswordExpired / UserLocked /
+		// InvalidCredentials / UnknownLogonFailure based on
+		// the SDK-reported Key + Message. The classifier
+		// preserves errors.Is(err, ErrLogon) for every subtype
+		// (see nwrfc/errors_logon.go).
+		return buildLogonError(info, LogonErrorContext{})
 	case backend.GroupCommunicationFailure:
 		return &CommunicationError{SDKErrorInfo: info}
 	case backend.GroupAbapApplicationFailure:

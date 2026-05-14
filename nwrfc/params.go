@@ -4,7 +4,9 @@
 package nwrfc
 
 import (
+	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
 
 	"github.com/cjordaoc/gorfc/internal/backend"
@@ -97,17 +99,98 @@ type Params struct {
 	// Extra carries SDK parameters not modeled by named
 	// fields. Keys must be lowercase SDK names; values are
 	// passed through verbatim.
+	//
+	// Sensitive Extra keys (anything matched by
+	// [backend.IsSensitiveKey], i.e. the canonical SDK names
+	// plus the `passwd_*`, `*_token`, `*_secret`, `*_key`,
+	// `bearer*`, `saml*`, `x509*`, `snc*`, `mysapsso*` shapes)
+	// are redacted by [LogValue] / [String]. The redaction
+	// table is shared with the otel layer so logs and span
+	// attributes can never disagree.
 	Extra map[string]string
+
+	// MaxTraceLevel optionally caps the maximum SDK trace
+	// level callers may set via [SetTraceLevel]. The SDK
+	// natively accepts 0..3; trace level > 0 captures
+	// payloads (see docs/SECURITY.md §5). Operators in
+	// regulated environments use this field to prevent any
+	// downstream code from raising trace verbosity beyond a
+	// declared ceiling.
+	//
+	// Zero (the default) means "no cap" — the SDK's full
+	// 0..3 range is allowed. Non-zero values are clamped to
+	// 0..3; SetTraceLevel(n) with n > MaxTraceLevel returns
+	// *ConfigError pointing at docs/SECURITY.md.
+	//
+	// Process-global: the SDK trace level is process-wide,
+	// not per-Conn. The cap is therefore stored in the
+	// package-level state managed by [SetTraceLevel] /
+	// [InstallTracePolicy]; this field is the convenient
+	// declarative shape on Params for operators who set it
+	// at startup.
+	MaxTraceLevel int
 }
 
 // LogValue redacts sensitive fields per
-// backend.SensitiveKeys. Operators can log a Params via
+// [backend.IsSensitiveKey]. Operators can log a Params via
 // slog.Info without leaking credentials:
 //
 //	slog.Info("opening", "params", p)
 func (p Params) LogValue() slog.Value {
 	return p.toBackendParams().LogValue()
 }
+
+// String formats Params with the same redaction policy as
+// [LogValue], so it is safe to use in `%v` / `%s` / `fmt.Print`
+// sites. Implemented because Go's default formatter would
+// otherwise emit the raw struct fields, including `Passwd`,
+// when somebody does `fmt.Sprintf("%v", p)`.
+//
+// The output shape is `nwrfc.Params{key=value, key=«redacted»,
+// ...}` with keys sorted alphabetically for stability across
+// runs (deterministic test output, deterministic log lines).
+func (p Params) String() string {
+	bp := p.toBackendParams()
+	keys := make([]string, 0, len(bp))
+	for k := range bp {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var b strings.Builder
+	b.Grow(len(bp) * 32)
+	b.WriteString("nwrfc.Params{")
+	for i, k := range keys {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		b.WriteString(k)
+		b.WriteByte('=')
+		if backend.IsSensitiveKey(k) {
+			b.WriteString(backend.RedactedPlaceholder)
+		} else {
+			b.WriteString(bp[k])
+		}
+	}
+	b.WriteByte('}')
+	return b.String()
+}
+
+// GoString mirrors [String] for the `%#v` verb. Without this,
+// `fmt.Sprintf("%#v", p)` would dump the raw struct, leaking
+// `Passwd`. Returns the same redacted shape.
+func (p Params) GoString() string {
+	return p.String()
+}
+
+// Compile-time interface assertions: Params is a slog.LogValuer
+// AND a fmt.Stringer / fmt.GoStringer, so neither default
+// formatting verb leaks credentials.
+var (
+	_ slog.LogValuer = Params{}
+	_ fmt.Stringer   = Params{}
+	_ fmt.GoStringer = Params{}
+)
 
 // toBackendParams converts the public Params struct into the
 // internal backend.Params map shape. Empty fields are omitted

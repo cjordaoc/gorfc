@@ -8,7 +8,11 @@
 
 module github.com/cjordaoc/gorfc
 
-go 1.23
+// Go 1.25 is required for the testing/synctest API used by the
+// cancel/timeout tests under nwrfc/cancel_synctest_test.go. The
+// toolchain directive auto-fetches 1.25.0 if the developer's
+// machine has an older go.
+go 1.25
 
 toolchain go1.25.0
 

@@ -118,7 +118,7 @@ func (s *Session) close(ctx context.Context, fn string, in backend.CallParams, r
 	resp, err := c.backend.Invoke(ctx, c.handle, fn, in, backend.InvokeOptions{})
 	if err != nil {
 		if resetOnInvokeErr {
-			if rerr := c.backend.Reset(c.handle); rerr != nil {
+			if rerr := c.backend.Reset(ctx, c.handle); rerr != nil {
 				return errors.Join(err, rerr)
 			}
 			s.closed.Store(true)
@@ -127,7 +127,7 @@ func (s *Session) close(ctx context.Context, fn string, in backend.CallParams, r
 	}
 	// Reset SAP-side context so the next call on this Conn
 	// starts clean.
-	if rerr := c.backend.Reset(c.handle); rerr != nil {
+	if rerr := c.backend.Reset(ctx, c.handle); rerr != nil {
 		err = errors.Join(err, rerr)
 	}
 	s.closed.Store(true)

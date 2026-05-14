@@ -124,11 +124,28 @@ For a sanity check against a real SAP system, see the
 [examples/](../example/) directory and the GORFC_TEST_* environment
 variables in [SECURITY.md](SECURITY.md) §3.
 
+CLI packaging probes:
+
+```bash
+nwrfc --version
+nwrfc health --json
+nwrfc preflight --json
+```
+
+`--version` is safe in SDK-free builds. `health` and `preflight` fail
+explicitly when SAP NW RFC SDK is absent; `preflight` only attempts a SAP ping
+when the documented `GORFC_TEST_*` connection variables are configured.
+
 ## See also
 
 - [BUILD.md](BUILD.md) — deeper notes on cross-compilation, sentinels,
-  and CI matrices.
+  CI matrices, and IDE / gopls configuration.
+- [DEPLOY.md](DEPLOY.md) — VDI / production deployment playbook
+  (Linux `$ORIGIN`-relative rpath, Windows `.exe`-adjacent DLLs,
+  Citrix / VMware Horizon / AWS WorkSpaces / Azure Virtual Desktop).
 - [CONFIGURATION.md](CONFIGURATION.md) — runtime configuration
   (Params, IniFS, providers).
-- [ERRORS.md](ERRORS.md) — typed error hierarchy and retry semantics.
-- [SECURITY.md](SECURITY.md) — credential rules and redaction.
+- [ERRORS.md](ERRORS.md) — typed error hierarchy, retry semantics,
+  cancellation caveat.
+- [SECURITY.md](SECURITY.md) — credential rules, redaction matcher,
+  trace level cap.

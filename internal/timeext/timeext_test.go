@@ -104,9 +104,9 @@ func TestParseTime(t *testing.T) {
 		want backend.Time
 		ok   bool
 	}{
-		{"123456", backend.Time{12, 34, 56}, true},
-		{"235959", backend.Time{23, 59, 59}, true},
-		{"000001", backend.Time{0, 0, 1}, true},
+		{"123456", backend.Time{Hour: 12, Minute: 34, Second: 56}, true},
+		{"235959", backend.Time{Hour: 23, Minute: 59, Second: 59}, true},
+		{"000001", backend.Time{Hour: 0, Minute: 0, Second: 1}, true},
 		{"240000", backend.Time{}, false}, // hour 24
 		{"126059", backend.Time{}, false}, // min 60
 		{"123460", backend.Time{}, false}, // sec 60
@@ -141,9 +141,9 @@ func TestFormatTime(t *testing.T) {
 		in   backend.Time
 		want string
 	}{
-		{backend.Time{12, 34, 56}, "123456"},
-		{backend.Time{0, 0, 0}, "000000"},
-		{backend.Time{23, 59, 59}, "235959"},
+		{backend.Time{Hour: 12, Minute: 34, Second: 56}, "123456"},
+		{backend.Time{Hour: 0, Minute: 0, Second: 0}, "000000"},
+		{backend.Time{Hour: 23, Minute: 59, Second: 59}, "235959"},
 	}
 	for _, tc := range cases {
 		if got := FormatTime(tc.in); got != tc.want {

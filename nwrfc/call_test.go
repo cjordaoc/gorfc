@@ -35,7 +35,7 @@ func (b *echoBackend) Ping(_ context.Context, _ backend.ConnHandle) error { retu
 func (b *echoBackend) Attributes(backend.ConnHandle) (backend.Attributes, error) {
 	return backend.Attributes{}, nil
 }
-func (b *echoBackend) Reset(backend.ConnHandle) error { return nil }
+func (b *echoBackend) Reset(context.Context, backend.ConnHandle) error { return nil }
 func (b *echoBackend) Describe(_ context.Context, _ backend.ConnHandle, _ string) (backend.FunctionDescriptor, error) {
 	return backend.FunctionDescriptor{}, nil
 }

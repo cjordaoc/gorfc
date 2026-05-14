@@ -127,6 +127,64 @@ captures payloads. The library MUST:
 - Never enable trace level > 0 in CI or examples without scrubbing
   output before commit.
 
+### v0.2.0 — `Params.MaxTraceLevel` cap
+
+`nwrfc.Params` exposes a `MaxTraceLevel int` field that caps
+the maximum SDK trace level the process may set. The cap is
+declarative and process-global with **tightest-wins**
+semantics:
+
+- Zero (the default) means "no cap".
+- Setting `Params{MaxTraceLevel: N}` and calling `Open` with
+  `N > 0` installs `N` as the floor. Any later `Params{
+  MaxTraceLevel: M}` with `M < N` further tightens. A value
+  with `M > N` is silently ignored — the cap only ever moves
+  down.
+- `nwrfc.SetTraceLevel(n)` with `n > MaxTraceLevel` returns
+  `*ConfigError` referencing this section.
+- The cap is process-global because the SDK trace state is
+  itself process-global (`RfcSetTraceLevel(NULL, NULL, ...)`).
+  Per-Conn caps would race; we make the constraint
+  monotonically restrictive.
+
+In regulated environments set `MaxTraceLevel = 1` (or `0`) at
+process start to prevent any downstream library code from
+raising trace verbosity beyond what your risk assessment
+allowed:
+
+```go
+_, err := nwrfc.Open(ctx, nwrfc.Params{
+    AsHost: ..., User: ..., Passwd: ...,
+    MaxTraceLevel: 1, // cap: never above level 1
+})
+```
+
+The cap is the security gate, not a hint. Implementation
+reference: [`nwrfc/utility.go`](../nwrfc/utility.go).
+
+### Redaction matcher (v0.2.0+)
+
+The single source of truth for "is this Params key sensitive"
+is `internal/backend.IsSensitiveKey`. It matches three ways
+(case-insensitive after trim):
+
+* **Explicit names**: `passwd`, `password`, `mysapsso2`,
+  `x509cert`, `snc_myname`, `snc_partnername`, `snc_sso`,
+  `tls_client_pse`, `tls_trust_all`, `saml2`, `bearer`.
+* **Prefixes**: `passwd*`, `password*`, `secret*`, `bearer*`,
+  `saml*`, `x509*`, `snc*`, `tls_*`, `mysapsso*`.
+* **Suffixes**: `*_token`, `*_secret`, `*_key`,
+  `*_credential`, `*_credentials`, `*_password`, `*_passwd`.
+
+`Params.Extra[k]` entries are run through the same matcher,
+so future SAP additions like `client_secret`, `api_token`,
+or hypothetical `snc_qos_token` are redacted by default —
+operators do not have to wait for a library bump.
+
+`Params` implements `slog.LogValuer`, `fmt.Stringer`, AND
+`fmt.GoStringer`, so accidental `fmt.Println(p)` /
+`fmt.Sprintf("%+v", p)` cannot leak credentials.
+
 ## 6. CI secret scanning
 
 The repository runs **gitleaks** on every push and pull request via

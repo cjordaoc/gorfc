@@ -6,15 +6,14 @@ package nwrfc
 import (
 	"sync/atomic"
 	"time"
-
-	"github.com/cjordaoc/gorfc/internal/backend"
 )
 
 // Throughput accumulates per-connection traffic statistics.
 // In Tier 2 the SDK-side counters require SAP NWRFC SDK 7.53+
 // (`RfcCreateThroughput` and friends, 🟡 verify); when the
-// loaded SDK is older the wrapper falls back to Go-side
-// counters fed by the Conn lifecycle hooks.
+// loaded SDK is older — or the active backend is the no-SDK
+// stub / mock — the wrapper falls back to Go-side counters fed
+// by the Conn call path.
 //
 // Use:
 //
@@ -23,8 +22,8 @@ import (
 //	... rfc calls ...
 //	stats := tp.Stats()
 //
-// The struct is safe for concurrent use; counters are
-// updated atomically.
+// The struct is safe for concurrent use; every field is updated
+// atomically.
 type Throughput struct {
 	calls           atomic.Int64
 	bytesSent       atomic.Int64
@@ -33,43 +32,42 @@ type Throughput struct {
 	totalTime       atomic.Int64 // microseconds
 	serializeTime   atomic.Int64
 	deserializeTime atomic.Int64
-	createdAt       time.Time
+	createdAtNano   atomic.Int64 // time.Time.UnixNano of the anchor
 }
 
-// NewThroughput constructs an empty counter.
+// NewThroughput constructs an empty counter anchored at the
+// current time.
 func NewThroughput() *Throughput {
-	return &Throughput{createdAt: time.Now()}
+	tp := &Throughput{}
+	tp.createdAtNano.Store(time.Now().UnixNano())
+	return tp
 }
 
-// Attach binds tp to c so subsequent calls update its counters.
+// Attach binds tp to c so subsequent successful [Call]s on c
+// update tp's counters via the Go-side fallback path.
 //
-// 🟡 SDK-side binding requires `RfcSetThroughputOnConnection`
-// (SDK 7.53+; verification pending). When unavailable, the
-// wrapper falls back to Go-side timing in mapBackendCall (T1.8
-// hooks) — the counters are slightly less accurate but always
-// available.
+// The Go-side fallback increments Calls on every successful
+// invocation but does NOT populate the bytes/timing counters
+// (BytesSent, BytesReceived, ApplicationTime, TotalTime,
+// SerializeTime, DeserializeTime) — those are only available
+// from the SDK-side throughput counters, which require SAP
+// NWRFC SDK 7.53+ (`RfcSetThroughputOnConnection`, 🟡
+// verification pending) and are wired in a separate
+// capability-gated PR.
 //
-// Returns *UnsupportedFeatureError when the active backend does
-// not implement the throughput hook AND the SDK version is too
-// old for the SDK-side counters.
+// Attach returns an error only when c is nil. A backend that
+// does not implement the SDK-side throughput hook is not an
+// error: the Go-side fallback is always available and
+// sufficient for call counting.
 func (tp *Throughput) Attach(c *Conn) error {
-	_ = c // currently a no-op; the SDK-side hook lands when
-	// the cgo binding for RfcSetThroughputOnConnection is
-	// implemented (separate PR — capability-gated).
-	caps := backend.Default().Capabilities()
-	if !caps.Throughput {
-		// Go-side fallback is automatic via the Conn lifecycle
-		// hooks; signal the gap so callers can warn.
-		return &UnsupportedFeatureError{
-			Feature:         "Throughput SDK counters",
-			RequiredVersion: backend.Version{Major: 7, Minor: 53, PatchLevel: 0},
-			CurrentVersion:  backend.Default().Version(),
-		}
+	if c == nil {
+		return &BrokenConnectionError{Reason: "nil Conn", Cause: ErrConnClosed}
 	}
+	c.tp = tp
 	return nil
 }
 
-// Stats returns a snapshot of the counters.
+// ThroughputStats is a snapshot of the counters.
 type ThroughputStats struct {
 	Calls           int64
 	BytesSent       int64
@@ -81,7 +79,10 @@ type ThroughputStats struct {
 	WallTime        time.Duration
 }
 
-// Stats returns a snapshot.
+// Stats returns a snapshot. WallTime is computed as the elapsed
+// time since the anchor recorded at [NewThroughput] / [Reset]
+// (stored as a UnixNano atomic so concurrent Stats / Reset is
+// race-free).
 func (tp *Throughput) Stats() ThroughputStats {
 	return ThroughputStats{
 		Calls:           tp.calls.Load(),
@@ -91,11 +92,12 @@ func (tp *Throughput) Stats() ThroughputStats {
 		TotalTime:       time.Duration(tp.totalTime.Load()) * time.Microsecond,
 		SerializeTime:   time.Duration(tp.serializeTime.Load()) * time.Microsecond,
 		DeserializeTime: time.Duration(tp.deserializeTime.Load()) * time.Microsecond,
-		WallTime:        time.Since(tp.createdAt),
+		WallTime:        time.Since(time.Unix(0, tp.createdAtNano.Load())),
 	}
 }
 
-// Reset clears all counters and re-anchors WallTime.
+// Reset clears all counters and re-anchors WallTime to the
+// current time.
 func (tp *Throughput) Reset() {
 	tp.calls.Store(0)
 	tp.bytesSent.Store(0)
@@ -104,12 +106,14 @@ func (tp *Throughput) Reset() {
 	tp.totalTime.Store(0)
 	tp.serializeTime.Store(0)
 	tp.deserializeTime.Store(0)
-	tp.createdAt = time.Now()
+	tp.createdAtNano.Store(time.Now().UnixNano())
 }
 
 // observe updates counters from a single completed call. Used
-// by the Go-side fallback path. SDK-side throughput populates
-// the counters via the SDK callbacks instead.
+// by the Go-side fallback path wired in [Call]; on that path
+// the bytes/timing arguments are zero (only Calls is
+// meaningful). SDK-side throughput populates the full set of
+// counters via the SDK callbacks instead.
 func (tp *Throughput) observe(bytesSent, bytesReceived int64, app, total time.Duration) {
 	tp.calls.Add(1)
 	tp.bytesSent.Add(bytesSent)

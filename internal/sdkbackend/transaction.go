@@ -26,7 +26,6 @@ import "C"
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 	"unsafe"
@@ -226,26 +225,15 @@ func (b *sdkBackend) InvokeInTransaction(ctx context.Context, h backend.ConnHand
 	}
 
 	// ctx cancel watcher — RfcCancel applies on the connection
-	// handle, not the transaction handle, per SDK convention.
-	cancelDone := make(chan struct{})
-	go func() {
-		select {
-		case <-ctx.Done():
-			var ci C.RFC_ERROR_INFO
-			C.RfcCancel(sdkConnPtr(c), &ci)
-		case <-cancelDone:
-		}
-	}()
-
+	// handle (not the transaction handle); shared via cancel.go
+	// to keep one source of truth for the goroutine pattern.
+	cleanup := withCancelWatcher(ctx, c)
 	rc := C.RfcInvokeInTransaction(sdkTxPtr(t), fh, &info)
-	close(cancelDone)
+	cleanup()
 
 	if rc != C.RFC_OK {
-		if cerr := ctx.Err(); cerr != nil {
-			if errors.Is(cerr, context.DeadlineExceeded) {
-				return fmt.Errorf("RfcInvokeInTransaction(%s): %w", fn, backend.ErrTimeout)
-			}
-			return fmt.Errorf("RfcInvokeInTransaction(%s): %w", fn, backend.ErrCancelled)
+		if err := ctxErrorIfFired(ctx, "RfcInvokeInTransaction("+fn+")"); err != nil {
+			return err
 		}
 		return errFromInfo(&info, "RfcInvokeInTransaction("+fn+")")
 	}

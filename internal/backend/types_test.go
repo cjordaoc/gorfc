@@ -201,7 +201,7 @@ func (b *fakeBackend) Open(_ context.Context, _ Params) (ConnHandle, error) { re
 func (b *fakeBackend) Close(ConnHandle) error                               { return ErrUnavailable }
 func (b *fakeBackend) Ping(_ context.Context, _ ConnHandle) error           { return ErrUnavailable }
 func (b *fakeBackend) Attributes(ConnHandle) (Attributes, error)            { return Attributes{}, ErrUnavailable }
-func (b *fakeBackend) Reset(ConnHandle) error                               { return ErrUnavailable }
+func (b *fakeBackend) Reset(_ context.Context, _ ConnHandle) error          { return ErrUnavailable }
 func (b *fakeBackend) Describe(_ context.Context, _ ConnHandle, _ string) (FunctionDescriptor, error) {
 	return FunctionDescriptor{}, ErrUnavailable
 }

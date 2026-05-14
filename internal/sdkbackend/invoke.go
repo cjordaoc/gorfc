@@ -72,32 +72,21 @@ func invokeFunction(ctx context.Context, c *connHandle, fn string, in backend.Ca
 		}
 	}
 
-	// Watch ctx cancel: if cancelled while RfcInvoke blocks,
-	// call RfcCancel from a separate goroutine. RfcCancel is
+	// Watch ctx cancel via the shared helper (cancel.go). The
+	// watcher calls RfcCancel from a separate goroutine —
 	// thread-safe with respect to RfcInvoke per the SDK
-	// programming guide; it does NOT take the connection
-	// mutex (which is held by the caller).
-	cancelDone := make(chan struct{})
-	go func() {
-		select {
-		case <-ctx.Done():
-			var ci C.RFC_ERROR_INFO
-			C.RfcCancel(sdkConnPtr(c), &ci)
-		case <-cancelDone:
-		}
-	}()
-
+	// programming guide; it does NOT take the per-Conn mutex
+	// (which is held by the caller). See
+	// docs/EVIDENCE/sdk-cancel.md for the SDK contract.
+	cleanup := withCancelWatcher(ctx, c)
 	rc := C.RfcInvoke(sdkConnPtr(c), fh, &info)
-	close(cancelDone)
+	cleanup()
 
 	if rc != C.RFC_OK {
 		// If ctx was cancelled, surface a sentinel that nwrfc
 		// translates to *TimeoutError / *CancelledError.
-		if cerr := ctx.Err(); cerr != nil {
-			if errors.Is(cerr, context.DeadlineExceeded) {
-				return nil, fmt.Errorf("RfcInvoke(%s): %w", fn, backend.ErrTimeout)
-			}
-			return nil, fmt.Errorf("RfcInvoke(%s): %w", fn, backend.ErrCancelled)
+		if err := ctxErrorIfFired(ctx, "RfcInvoke("+fn+")"); err != nil {
+			return nil, err
 		}
 		return nil, errFromInfo(&info, "RfcInvoke("+fn+")")
 	}

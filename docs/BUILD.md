@@ -122,6 +122,33 @@ For portable application builds:
    outside the process as the last line of defense for a native SDK call
    blocked below Go.
 
+## Windows/amd64 SDK build on the target host
+
+When the SAP NW RFC SDK for Windows is available only on the Windows VDI,
+build `nwrfc.exe` directly on that VDI instead of copying the proprietary SDK
+to a Linux build host. The required non-SAP tools are Go for Windows, a
+Windows/amd64 C toolchain such as MSYS2 MINGW64 GCC, and the Microsoft Visual
+C++ 2015-2022 x64 Redistributable required by current SAP NW RFC SDK DLLs.
+
+```powershell
+$env:PATH = "C:\Program Files\Go\bin;C:\msys64\mingw64\bin;$env:PATH"
+.\scripts\build-windows-sdk.ps1 `
+  -SapNWRFCHome "C:\operator-secure\nwrfcsdk-windows" `
+  -Output "C:\nexus-validation\nwrfc.exe" `
+  -CC "C:\msys64\mingw64\bin\gcc.exe"
+```
+
+The script is idempotent: it validates `include\sapnwrfc.h`,
+`lib\sapnwrfc.dll`, and `lib\libsapucum.dll`, sets only process-local cgo
+environment variables, prepends the SDK `lib` directory to the build process
+`PATH`, builds `.\cmd\nwrfc`, and runs `nwrfc.exe preflight --json` unless
+`-SkipPreflight` is supplied. It does not download, copy, commit, or vendor any
+SAP SDK file.
+
+The resulting executable is a real cgo build only when it is produced without
+`-tags nwrfc_nosdk` and `nwrfc.exe health --json` reports `ok:true` with an SDK
+version other than `no-sdk`.
+
 ## Cross-compilation
 
 Cgo cross-compilation needs a cross-toolchain. Two reliable patterns:
@@ -343,9 +370,55 @@ Set `GOFLAGS=-trimpath -buildvcs=false` and pin the SAP SDK release
 same `go.sum`, `SAPNWRFC_HOME` SDK PL, and `CC` produce
 byte-identical binaries on Linux+amd64.
 
+## IDE / gopls configuration
+
+The cgo files under `internal/sdkbackend/*.go` and the legacy
+`gorfc/gorfc.go` carry `//go:build cgo && !nwrfc_nosdk`. They
+`#include <sapnwrfc.h>`, so on a developer machine without the
+SAP NW RFC SDK headers installed locally, gopls will report
+`undefined: C.RfcOpenConnection` and similar errors when it
+tries to index those files.
+
+This is **not** a build problem (the no-SDK build excludes the
+files entirely; the SDK build needs the headers anyway). It is
+a per-developer LSP indexing concern. Two ways to silence it:
+
+**Option A** — point gopls at the SDK headers locally
+(recommended when you do have the SDK installed):
+
+```jsonc
+// .vscode/settings.json (per developer; .vscode is gitignored)
+{
+  "go.toolsEnvVars": {
+    "CGO_CFLAGS":  "-I/opt/sap/nwrfcsdk/include",
+    "CGO_LDFLAGS": "-L/opt/sap/nwrfcsdk/lib"
+  }
+}
+```
+
+**Option B** — tell gopls to index the no-SDK side only, so
+the cgo files are simply excluded from indexing:
+
+```jsonc
+// .vscode/settings.json (per developer; .vscode is gitignored)
+{
+  "gopls": {
+    "build.buildFlags": ["-tags=nwrfc_nosdk"]
+  }
+}
+```
+
+Both options are local to the developer machine. The repo
+deliberately does not commit `.vscode/` (see `.gitignore`).
+
+For Vim / Neovim with `coc-go` or `gopls` direct, set
+`build.buildFlags` to `["-tags=nwrfc_nosdk"]` in the LSP
+settings.
+
 ## See also
 
 - [INSTALL.md](INSTALL.md) — quickstart per OS.
+- [DEPLOY.md](DEPLOY.md) — VDI / production deployment.
 - [SDK_FUNCTIONS_MAP.md](SDK_FUNCTIONS_MAP.md) — every SDK function
   the binding uses, with verification status.
 - [PLAN.md §6](PLAN.md#6-internal-cgo-binding-strategy) — the cgo

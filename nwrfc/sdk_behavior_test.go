@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cjordaoc/gorfc/nwrfc"
 )
@@ -172,7 +173,24 @@ func TestSetTraceDir_RealFile(t *testing.T) {
 	if err := nwrfc.EnsureSDK(); err != nil {
 		t.Fatalf("EnsureSDK: %v", err)
 	}
-	tmp := t.TempDir()
+	tmp, err := os.MkdirTemp("", "gorfc-trace-*")
+	if err != nil {
+		t.Fatalf("MkdirTemp: %v", err)
+	}
+	t.Cleanup(func() {
+		// The Windows SDK can briefly keep the trace file handle open
+		// after trace level is reset. Move future traces away from the
+		// temp dir and retry cleanup so the test remains deterministic.
+		_ = nwrfc.SetTraceLevel(0)
+		_ = nwrfc.SetTraceDir(os.TempDir())
+		for i := 0; i < 10; i++ {
+			if err := os.RemoveAll(tmp); err == nil {
+				return
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		t.Logf("trace temp dir cleanup deferred by SAP SDK file handle: %s", tmp)
+	})
 	if err := nwrfc.SetTraceDir(tmp); err != nil {
 		t.Fatalf("SetTraceDir(%q): %v", tmp, err)
 	}

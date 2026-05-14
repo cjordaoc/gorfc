@@ -93,13 +93,71 @@ func openConn(ctx context.Context, p backend.Params) (*connHandle, error) {
 	if len(cParams) > 0 {
 		paramsPtr = &cParams[0]
 	}
+
+	// Note: a watcher cannot use RfcCancel here because the
+	// connection handle does not exist yet. Open is bounded by
+	// the SDK's own RfcOpenConnection timeout (driven by the
+	// connection params); ctx is honored at the pre-call check
+	// above and at the post-call surface — the SDK call itself
+	// is not interruptible cross-thread until a handle exists.
 	h := C.RfcOpenConnection(paramsPtr, C.uint(len(cParams)), &info)
 	if h == nil {
+		// Surface ctx-cancelled / deadline-exceeded so callers
+		// can branch via errors.Is(ErrCancelled / ErrTimeout)
+		// uniformly with the other lifecycle ops, even though
+		// we did not actively cancel the SDK call.
+		if cerr := ctxErrorIfFired(ctx, "RfcOpenConnection"); cerr != nil {
+			return nil, cerr
+		}
 		return nil, errFromInfo(&info, "RfcOpenConnection")
 	}
 	c := &connHandle{}
 	setSDKConnPtr(c, h)
 	return c, nil
+}
+
+// cancelConn implements [backend.Cancellable.Cancel] over
+// `RfcCancel`. RfcCancel is the only SAP NW RFC SDK call
+// documented thread-safe with respect to a goroutine blocked
+// in `RfcInvoke` / `RfcOpenConnection` / etc. on the same
+// handle (see docs/EVIDENCE/sdk-cancel.md).
+//
+// We intentionally do NOT take c.mu — by SDK design RfcCancel
+// runs in parallel with the (mutex-holding) blocked op. Taking
+// the mutex here would deadlock against that blocked op.
+//
+// Idempotent: a CAS into the cancelled state ensures repeat
+// calls return nil.
+//
+// Behavior of RfcCancel against a connection in any of these
+// states is well-defined per the SDK programming guide:
+//
+//   - blocked in RfcInvoke      → unblocks with RFC_CANCELED
+//   - blocked in RfcOpenConnection → unblocks with RFC_CANCELED
+//   - blocked in RfcPing        → unblocks with RFC_CANCELED
+//   - already returned          → no-op (the SDK ignores it)
+//   - already closed            → undefined; our local state
+//     check rejects with nil before reaching the SDK
+//
+// SDK function: RfcCancel (✅ verified PL18; see
+// docs/EVIDENCE/sdk-cancel.md).
+func cancelConn(c *connHandle) error {
+	// Already-closed handles are rejected with nil — Cancel
+	// after Close is harmless and cannot do useful work.
+	if atomic.LoadUint32((*uint32)(unsafe.Pointer(&c.state))) == stateClosed {
+		return nil
+	}
+	var info C.RFC_ERROR_INFO
+	rc := C.RfcCancel(sdkConnPtr(c), &info)
+	if rc != C.RFC_OK {
+		// RfcCancel only fails if the handle is already invalid,
+		// in which case the in-flight call has already returned
+		// (or the connection has already been closed). Treat
+		// non-zero RC as informational; we still report it for
+		// diagnostics but do not surface as a fatal error.
+		return errFromInfo(&info, "RfcCancel")
+	}
+	return nil
 }
 
 // closeConn implements [backend.Backend.Close] over RfcCloseConnection.
@@ -120,6 +178,7 @@ func closeConn(c *connHandle) error {
 }
 
 // pingConn implements [backend.Backend.Ping] over RfcPing.
+// Honors ctx via the shared cancel watcher (cancel.go).
 //
 // SDK function: RfcPing (✅ confirmed; 7.50 PL3+).
 func pingConn(ctx context.Context, c *connHandle) error {
@@ -128,24 +187,39 @@ func pingConn(ctx context.Context, c *connHandle) error {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	cleanup := withCancelWatcher(ctx, c)
 	var info C.RFC_ERROR_INFO
 	rc := C.RfcPing(sdkConnPtr(c), &info)
+	cleanup()
 	if rc != C.RFC_OK {
+		if err := ctxErrorIfFired(ctx, "RfcPing"); err != nil {
+			return err
+		}
 		return errFromInfo(&info, "RfcPing")
 	}
 	return nil
 }
 
 // resetConn implements [backend.Backend.Reset] over
-// RfcResetServerContext.
+// RfcResetServerContext. Honors ctx via the shared cancel
+// watcher; takes a context now (the public Conn.Reset API
+// adds ctx in v0.2.0 to keep parity with Ping/Describe/Invoke).
 //
 // SDK function: RfcResetServerContext (✅ confirmed; 7.50 PL3+).
-func resetConn(c *connHandle) error {
+func resetConn(ctx context.Context, c *connHandle) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	cleanup := withCancelWatcher(ctx, c)
 	var info C.RFC_ERROR_INFO
 	rc := C.RfcResetServerContext(sdkConnPtr(c), &info)
+	cleanup()
 	if rc != C.RFC_OK {
+		if err := ctxErrorIfFired(ctx, "RfcResetServerContext"); err != nil {
+			return err
+		}
 		return errFromInfo(&info, "RfcResetServerContext")
 	}
 	return nil

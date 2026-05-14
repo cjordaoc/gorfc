@@ -258,7 +258,7 @@ foreach ($p in $paths) {
 Write-Host "OK"
 
 # ---------------------------------------------------------------
-# 8. Live SAP smoke (Categoria B) — TestConnect / TestPing.
+# 8. Live SAP smoke (Categoria B) - TestConnect / TestPing.
 # ---------------------------------------------------------------
 Write-Section "Live SAP smoke (Categoria B)"
 
@@ -267,7 +267,7 @@ Write-Host "go test $($testFlags -join ' ') -run 'TestConnect$|TestPing$|TestCon
 if ($LASTEXITCODE -ne 0) {
     Fail "smoke tests failed; check VPN / credentials / SAP service availability." 3
 }
-Write-Host "Smoke OK — connection + ping + attributes round-trip."
+Write-Host "Smoke OK - connection + ping + attributes round-trip."
 
 if ($SmokeOnly) {
     Write-Section "Done (smoke-only mode)"
@@ -291,11 +291,9 @@ Write-Host "OK"
 # 10. Done.
 # ---------------------------------------------------------------
 Write-Section "All tests passed"
-Write-Host "If you want to run the full integration suite (data type"
-Write-Host "edges + UTCLong + RAW), invoke:"
+Write-Host "Full integration suite (data-type edges, UTCLong, RAW):"
 Write-Host '    go test -count=1 ./gorfc/...'
-Write-Host "but be aware some tests reference custom RFMs (e.g."
-Write-Host "/COE/RBP_FE_DATATYPES, ZDATATYPES) that may not exist on"
-Write-Host "your DS4 system; those will skip or fail with"
-Write-Host "RFC_INVALID_PARAMETER 'function not found'."
+Write-Host "Some tests reference custom RFMs (/COE/RBP_FE_DATATYPES, ZDATATYPES)"
+Write-Host "that may not exist on your system; they will fail with"
+Write-Host "RFC_INVALID_PARAMETER (function not found) and that is benign."
 exit 0
